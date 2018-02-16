@@ -11,6 +11,8 @@ import (
 	"unicode"
 )
 
+var configPathFlag = flag.String("config", "", "The location of the config file. If this argument is not provided the paths './trivia-config.json' and './config/trivia-config.json' are searched in that order.")
+
 type triviaConfig struct {
 	DB struct {
 		Host     string `json:"host"`
@@ -32,9 +34,6 @@ type triviaConfig struct {
 }
 
 func loadConfig() *triviaConfig {
-	var configPathFlag = flag.String("config", "", "The location of the config file. If this argument is not provided the paths './trivia-config.json' and './config/trivia-config.json' are searched in that order.")
-	flag.Parse()
-
 	var configPath string
 	if configPathFlag != nil {
 		configPath = strings.TrimSpace(*configPathFlag)

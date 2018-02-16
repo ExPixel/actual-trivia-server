@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -28,7 +29,29 @@ func withLogging(handler http.Handler) http.Handler {
 	})
 }
 
+var logLevelFlag = flag.String("logLevel", "debug", "Sets the log minimum log level. Should be one onf 'debug', 'info', 'warning', 'error'.")
+
+func setLogLevelFromFlag() {
+	flg := strings.ToLower(*logLevelFlag)
+	switch flg {
+	case "debug":
+		eplog.SetMinLevel(eplog.LogLevelDebug)
+	case "info":
+		eplog.SetMinLevel(eplog.LogLevelInfo)
+	case "warning":
+		eplog.SetMinLevel(eplog.LogLevelWarning)
+	case "warn":
+		eplog.SetMinLevel(eplog.LogLevelWarning)
+	case "error":
+		eplog.SetMinLevel(eplog.LogLevelError)
+	default:
+		eplog.SetMinLevel(eplog.LogLevelInfo)
+	}
+}
+
 func main() {
+	flag.Parse()
+
 	fileLogHandler, err := eplog.NewDefaultFileHandler("trivia-log.log")
 	if err != nil {
 		log.Fatal("Failed to create file log handler for path: ", "trivia-log.log")
@@ -38,7 +61,7 @@ func main() {
 		fileLogHandler,
 	)
 	eplog.SetHandler(logHandler)
-	eplog.SetMinLevel(eplog.LogLevelInfo)
+	setLogLevelFromFlag()
 
 	go eplog.Start()
 
