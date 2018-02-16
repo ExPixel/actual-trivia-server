@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -70,8 +69,48 @@ func (h *handler) signup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) login(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Handling auth login.")
-	w.WriteHeader(200) // #TODO implement this shit
+	type loginBody struct {
+		Email    string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	type loginResponse struct {
+		AuthToken             string `json:"authToken"`
+		AuthTokenExpiresAt    int64  `json:"authTokenExpiresAt"`
+		RefreshToken          string `json:"refreshToken"`
+		RefreshTokenExpiresAt int64  `json:"refreshTokenExpiresAt"`
+	}
+
+	body := loginBody{}
+	if err := api.RequireJSONBody(w, r, &body); err != nil {
+		return
+	}
+
+	// #FIXME maybe I should check the length of the email
+	// and password in here and make sure that they don't go over our limits.
+	// for now this should be fine though.
+
+	pair, err := h.authService.LoginWithEmail(body.Email, body.Password)
+	if err != nil {
+		switch err {
+		case trivia.ErrUserNotFound:
+			api.Error(w, "No user with the given email and password.", http.StatusNotFound)
+		case trivia.ErrIncorrectPassword:
+			api.Error(w, "No user with the given email and password.", http.StatusNotFound)
+		default:
+			logger.Error("error ocurred while logging in with email and password: ", err)
+			api.Error(w, "Unknown error occurred while logging in.", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	resp := loginResponse{
+		AuthToken:             pair.Auth.Token,
+		AuthTokenExpiresAt:    pair.Auth.ExpiresAt.Unix(),
+		RefreshToken:          pair.Refresh.Token,
+		RefreshTokenExpiresAt: pair.Refresh.ExpiresAt.Unix(),
+	}
+	api.Response(w, &resp, http.StatusOK)
 }
 
 // NewHandler creates a new handler for requests to the authentication api.
