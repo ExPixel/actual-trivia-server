@@ -101,7 +101,7 @@ func (s *service) CreateUser(username string, email string, password string) (*t
 }
 
 func (s *service) generateTokenStrings() (string, string, error) {
-	buffer := make([]byte, 256)
+	buffer := make([]byte, 32)
 	authTokenString := ""
 	refreshTokenString := ""
 
