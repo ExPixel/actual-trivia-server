@@ -18,7 +18,7 @@ test: install
 # properly placed on the path somehow so I'll need to make some changes
 # If I really want this to be consistent and portable.
 run: install
-	${GOPATH}/bin/trivia-server
+	${GOPATH}/bin/trivia-server -level debug
 
 # #FIXME Maybe I should be getting other things things in here too like vendor dependencies
 # Or maybe I can add another target like make vdeps or something to do that instead.
