@@ -115,6 +115,7 @@ func mg004CreateAuthTokensTable(tx *sql.Tx) (err error) {
 	_, err = tx.Exec(`
 		CREATE TABLE refresh_tokens(
 			token CHAR(64) NOT NULL UNIQUE,
+			auth_token CHAR(64) NOT NULL,
 			user_id BIGINT,
 			guest_id BIGINT,
 			expires_at TIMESTAMPTZ NOT NULL
