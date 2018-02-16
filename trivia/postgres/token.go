@@ -46,6 +46,28 @@ func (s *tokenService) CreateTokenPair(auth *trivia.AuthToken, refresh *trivia.R
 	})
 }
 
+func (s *tokenService) AuthTokenExists(token string) (bool, error) {
+	err := s.db.QueryRow("SELECT user_id FROM auth_tokens WHERE token = $1", token).Scan()
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *tokenService) RefreshTokenExists(token string) (bool, error) {
+	err := s.db.QueryRow("SELECT user_id FROM refresh_tokens WHERE token = $1", token).Scan()
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // NewTokenService creats a use AuthTokenService
 func NewTokenService(db *sql.DB) trivia.AuthTokenService {
 	return &tokenService{db: db}
