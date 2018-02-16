@@ -23,7 +23,7 @@ func (h *handler) signup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type signupResponse struct {
-		UserID int `json:"userID"`
+		UserID int64 `json:"userID"`
 	}
 
 	body := signupBody{}

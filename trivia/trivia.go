@@ -7,13 +7,13 @@ import (
 
 // User is a representation of a user profile.
 type User struct {
-	ID       int
+	ID       int64
 	Username string
 }
 
 // UserCred is a representation of a user's login credentials.
 type UserCred struct {
-	UserID   int
+	UserID   int64
 	Email    string
 	Password []byte
 }
@@ -21,8 +21,8 @@ type UserCred struct {
 // AuthToken is a representation of an authentication used for signing and verifying requests to the API.
 type AuthToken struct {
 	Token     string
-	UserID    int
-	GuestID   int
+	UserID    int64
+	GuestID   int64
 	ExpiresAt time.Time
 }
 
@@ -33,8 +33,8 @@ type RefreshToken struct {
 	// AuthToken is the auth token that this refresh token is for.
 	AuthToken string
 
-	UserID    int
-	GuestID   int
+	UserID    int64
+	GuestID   int64
 	ExpiresAt time.Time
 }
 
@@ -47,7 +47,7 @@ type TokenPair struct {
 // A UserService contains methods for finding, creating, and modifying users.
 type UserService interface {
 	// UserById finds a user using their ID.
-	UserByID(id int) (*User, error)
+	UserByID(id int64) (*User, error)
 
 	// UserByUsername finds a user using their username.
 	UserByUsername(username string) (*User, error)
@@ -60,7 +60,7 @@ type UserService interface {
 
 	// DeleteUser deletes a user from the data store by ID, and returns true if a user with the
 	// given ID did exist and was deleted.
-	DeleteUser(id int) (bool, error)
+	DeleteUser(id int64) (bool, error)
 }
 
 // An AuthTokenService contains methods for creating and retrieving authentication and refresh tokens.

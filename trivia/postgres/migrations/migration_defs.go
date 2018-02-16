@@ -102,7 +102,7 @@ func mg003CreateUserCredsTable(tx *sql.Tx) (err error) {
 func mg004CreateAuthTokensTable(tx *sql.Tx) (err error) {
 	_, err = tx.Exec(`
 		CREATE TABLE auth_tokens(
-			token CHAR(64) NOT NULL UNIQUE,
+			token VARCHAR(96) PRIMARY KEY NOT NULL UNIQUE,
 			user_id BIGINT,
 			guest_id BIGINT,
 			expires_at TIMESTAMPTZ NOT NULL
@@ -114,8 +114,8 @@ func mg004CreateAuthTokensTable(tx *sql.Tx) (err error) {
 
 	_, err = tx.Exec(`
 		CREATE TABLE refresh_tokens(
-			token CHAR(64) NOT NULL UNIQUE,
-			auth_token CHAR(64) NOT NULL,
+			token VARCHAR(96) PRIMARY KEY NOT NULL UNIQUE,
+			auth_token VARCHAR(96) NOT NULL,
 			user_id BIGINT,
 			guest_id BIGINT,
 			expires_at TIMESTAMPTZ NOT NULL

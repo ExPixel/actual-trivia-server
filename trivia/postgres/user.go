@@ -11,7 +11,7 @@ type userService struct {
 	db *sql.DB
 }
 
-func (s *userService) UserByID(id int) (*trivia.User, error) {
+func (s *userService) UserByID(id int64) (*trivia.User, error) {
 	var user trivia.User
 	row := s.db.QueryRow(`SELECT id, username FROM users WHERE id = $1`, id)
 	if err := row.Scan(&user.ID, &user.Username); err != nil {
@@ -49,7 +49,7 @@ func (s *userService) CredByEmail(email string) (*trivia.UserCred, error) {
 
 func (s *userService) CreateUser(user *trivia.User, cred *trivia.UserCred) error {
 	return transact(s.db, func(tx *sql.Tx) error {
-		var userID int
+		var userID int64
 		err := tx.QueryRow(`INSERT INTO users (username) VALUES ($1) RETURNING id`, user.Username).Scan(&userID)
 		if err != nil {
 			return err
@@ -67,7 +67,7 @@ func (s *userService) CreateUser(user *trivia.User, cred *trivia.UserCred) error
 	})
 }
 
-func (s *userService) DeleteUser(id int) (bool, error) {
+func (s *userService) DeleteUser(id int64) (bool, error) {
 	res, err := s.db.Exec(`DELETE FROM users WHERE id = $1`, id)
 	if err != nil {
 		return false, err

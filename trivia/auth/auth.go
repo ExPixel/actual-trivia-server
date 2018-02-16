@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/expixel/actual-trivia-server/eplog"
@@ -12,7 +13,7 @@ import (
 
 var logger = eplog.NewPrefixLogger("auth")
 
-const maxTokenGenerationRetries = 5
+const maxTokenGenerationRetries = 2
 
 var errTokenGenMaxReached = errors.New("auth: reached the maximum number of retries for token generation")
 
@@ -35,7 +36,7 @@ func (s *service) LoginWithEmail(email string, password string) (*trivia.TokenPa
 		return nil, trivia.ErrIncorrectPassword
 	}
 
-	authTokenString, refreshTokenString, err := s.generateTokenStrings()
+	authTokenString, refreshTokenString, err := s.generateTokenStrings(creds.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +101,8 @@ func (s *service) CreateUser(username string, email string, password string) (*t
 	return user, creds, nil
 }
 
-func (s *service) generateTokenStrings() (string, string, error) {
+func (s *service) generateTokenStrings(userID int64) (string, string, error) {
+	useIDStr := strconv.FormatInt(userID, 36)
 	buffer := make([]byte, 32)
 	authTokenString := ""
 	refreshTokenString := ""
@@ -113,7 +115,7 @@ func (s *service) generateTokenStrings() (string, string, error) {
 			if err != nil {
 				return "", "", err
 			}
-			authTokenString = hex.EncodeToString(buffer)
+			authTokenString = hex.EncodeToString(buffer) + "." + useIDStr
 
 			exists, err := s.tokens.AuthTokenExists(authTokenString)
 			if err != nil {
@@ -129,7 +131,7 @@ func (s *service) generateTokenStrings() (string, string, error) {
 			if err != nil {
 				return "", "", err
 			}
-			refreshTokenString = hex.EncodeToString(buffer)
+			refreshTokenString = hex.EncodeToString(buffer) + "." + useIDStr
 
 			exists, err := s.tokens.RefreshTokenExists(refreshTokenString)
 			if err != nil {
