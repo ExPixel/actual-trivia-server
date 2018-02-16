@@ -29,7 +29,7 @@ func withLogging(handler http.Handler) http.Handler {
 	})
 }
 
-var logLevelFlag = flag.String("logLevel", "info", "Sets the log minimum log level. Should be one onf 'debug', 'info', 'warning', 'error'.")
+var logLevelFlag = flag.String("level", "info", "Sets the log minimum log level. Should be one onf 'debug', 'info', 'warning', 'error'.")
 
 func setLogLevelFromFlag() {
 	flg := strings.ToLower(*logLevelFlag)
