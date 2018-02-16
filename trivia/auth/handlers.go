@@ -8,7 +8,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/expixel/actual-trivia-server/trivia"
-	"github.com/expixel/actual-trivia-server/trivia/auth/api"
+	"github.com/expixel/actual-trivia-server/trivia/api"
 	"github.com/expixel/actual-trivia-server/trivia/auth/validate"
 )
 
