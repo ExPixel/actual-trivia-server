@@ -1,0 +1,19 @@
+{
+    "db": {
+        "host": "localhost",
+        "port": "5432",
+        "name": "dbName",
+        "user": "dbUser",
+        "password": "dbPassword",
+        "sslMode": "disable"
+    },
+
+    "auth": {
+        "pepper256": "256bit AE256 pepper used for hashed passwords."
+    },
+
+    "server": {
+        "addr": "0.0.0.0:8080",
+        "shutdownTimeout": "15000"
+    }
+}

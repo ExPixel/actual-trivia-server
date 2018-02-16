@@ -1,0 +1,4 @@
+# super secret configuration file
+/config/trivia-config.json
+
+/trivia-log.log
