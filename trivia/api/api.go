@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/expixel/actual-trivia-server/eplog"
 
@@ -88,6 +89,10 @@ func GetUserForAuthToken(token string, ts trivia.AuthTokenService) (*trivia.User
 		return nil, errTokenWithNoUserOrGuest
 	}
 
+	if time.Now().After(auth.ExpiresAt) {
+		return nil, trivia.ErrTokenExpired
+	}
+
 	if user == nil {
 		user = &trivia.User{
 			ID:       0,
@@ -133,6 +138,8 @@ func RequireRequestUser(w http.ResponseWriter, r *http.Request, ts trivia.AuthTo
 			Error(w, "Must provide an authentication token.", http.StatusUnauthorized)
 		case trivia.ErrInvalidToken:
 			Error(w, "Auth token format is not valid.", http.StatusBadRequest)
+		case trivia.ErrTokenExpired:
+			fallthrough
 		case trivia.ErrTokenNotFound:
 			Error(w, "Auth token does not exist or is expired.", http.StatusUnauthorized)
 		default:
