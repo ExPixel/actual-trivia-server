@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/expixel/actual-trivia-server/eplog"
-	"github.com/expixel/actual-trivia-server/trivia/auth"
+	"github.com/expixel/actual-trivia-server/trivia/api/auth"
 	"github.com/expixel/actual-trivia-server/trivia/postgres/migrations"
 
 	"github.com/expixel/actual-trivia-server/trivia/postgres"
