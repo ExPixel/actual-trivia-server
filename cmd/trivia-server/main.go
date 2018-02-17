@@ -14,6 +14,7 @@ import (
 
 	"github.com/expixel/actual-trivia-server/eplog"
 	"github.com/expixel/actual-trivia-server/trivia/api/auth"
+	"github.com/expixel/actual-trivia-server/trivia/api/profile"
 	"github.com/expixel/actual-trivia-server/trivia/postgres/migrations"
 
 	"github.com/expixel/actual-trivia-server/trivia/postgres"
@@ -100,8 +101,10 @@ func main() {
 
 	// ## handlers
 	authHandler := auth.NewHandler(authService)
+	profileHandler := profile.NewHandler(userService, tokenService)
 	r := http.NewServeMux()
 	r.Handle("/v1/auth/", withLogging(authHandler))
+	r.Handle("/v1/profile/", withLogging(profileHandler))
 
 	server := &http.Server{
 		Addr:         requireStringValue(config.Server.Addr, "0.0.0.0:8080", "server.addr cannot be empty"),

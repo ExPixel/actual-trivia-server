@@ -8,9 +8,12 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/expixel/actual-trivia-server/eplog"
+
 	"github.com/expixel/actual-trivia-server/trivia"
 )
 
+var logger = eplog.NewPrefixLogger("api")
 var errTokenWithNoUserOrGuest = errors.New("token has no valid user_id or guest_id")
 
 type apiResponse struct {
@@ -111,11 +114,31 @@ func GetRequestUser(r *http.Request, ts trivia.AuthTokenService) (*trivia.User, 
 	}
 
 	tokenType := fields[0]
-	if strings.EqualFold(tokenType, "BEARER") {
+	if !strings.EqualFold(tokenType, "Bearer") {
 		return nil, trivia.ErrInvalidToken
 	}
 
 	tokenString := fields[1]
 	user, err := GetUserForAuthToken(tokenString, ts)
+	return user, err
+}
+
+// RequireRequestUser authenticates a user and sends the proper error messages to the client
+// if a user cannot be authenticated.
+func RequireRequestUser(w http.ResponseWriter, r *http.Request, ts trivia.AuthTokenService) (*trivia.User, error) {
+	user, err := GetRequestUser(r, ts)
+	if err != nil {
+		switch err {
+		case trivia.ErrNoAuthInfo:
+			Error(w, "Must provide an authentication token.", http.StatusUnauthorized)
+		case trivia.ErrInvalidToken:
+			Error(w, "Auth token format is not valid.", http.StatusBadRequest)
+		case trivia.ErrTokenNotFound:
+			Error(w, "Auth token does not exist or is expired.", http.StatusUnauthorized)
+		default:
+			logger.Error("error occurred while authenticating: %s", err)
+			Error(w, "An unknown error occurred while authenticating your request.", http.StatusInternalServerError)
+		}
+	}
 	return user, err
 }

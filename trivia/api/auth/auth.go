@@ -42,8 +42,17 @@ func (s *service) LoginWithEmail(email string, password string) (*trivia.TokenPa
 		return nil, err
 	}
 
-	const authTokenExpiresIn time.Duration = 5 * time.Minute
-	const refreshTokenExpiresIn time.Duration = (24 * time.Hour) * 7
+	// #FIXME this is annoying as hell for manual testing right now so I'm temporarily extended the
+	// token expiration delay. Will definitely have to change this back to something reasonable
+	// once I have a good API consumer set up (probably in a React application)
+
+	// const authTokenExpiresIn time.Duration = 5 * time.Minute
+	// const refreshTokenExpiresIn time.Duration = (24 * time.Hour) * 7
+
+	// #FIXME REMOVE THESE
+	const authTokenExpiresIn time.Duration = 14 * (24 * time.Hour)
+	const refreshTokenExpiresIn time.Duration = 30 * (24 * time.Hour)
+
 	now := time.Now()
 	authTokenExpiresAt := now.Add(authTokenExpiresIn)
 	refreshTokenExpiresAt := now.Add(refreshTokenExpiresIn)
