@@ -130,3 +130,10 @@ var ErrTokenExpired = errors.New("token is expired")
 
 // ErrTokenNotFound is an error returned when an auth or refresh token cannot be found in the database.
 var ErrTokenNotFound = errors.New("token was not found")
+
+// ErrInvalidToken is an error returned when a provided auth token has an invalid format.
+var ErrInvalidToken = errors.New("malformed token")
+
+// ErrNoAuthInfo is returned when a function searching for an authorization header, cookie, ect. cannot find
+// one in a given request.
+var ErrNoAuthInfo = errors.New("no authentication information found")

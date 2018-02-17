@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/expixel/actual-trivia-server/trivia"
 )
@@ -98,6 +99,23 @@ func GetUserForAuthToken(token string, ts trivia.AuthTokenService) (*trivia.User
 
 // GetRequestUser extracts a user from a request.
 func GetRequestUser(r *http.Request, ts trivia.AuthTokenService) (*trivia.User, error) {
-	// authHeader, ok := r.Header["Authorization"]
-	return nil, nil
+	authHeaders, ok := r.Header["Authorization"]
+	if !ok || len(authHeaders) < 1 {
+		return nil, trivia.ErrNoAuthInfo
+	}
+	authHeader := authHeaders[len(authHeaders)-1]
+
+	fields := strings.Fields(authHeader)
+	if len(fields) != 2 {
+		return nil, trivia.ErrInvalidToken
+	}
+
+	tokenType := fields[0]
+	if strings.EqualFold(tokenType, "BEARER") {
+		return nil, trivia.ErrInvalidToken
+	}
+
+	tokenString := fields[1]
+	user, err := GetUserForAuthToken(tokenString, ts)
+	return user, err
 }
