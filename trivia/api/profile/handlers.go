@@ -19,7 +19,11 @@ func (h *handler) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.Response(w, "you are authenticated: "+currentUser.Username, http.StatusOK)
+	resp := userProfileResponse{
+		ID:       currentUser.ID,
+		Username: currentUser.Username,
+	}
+	api.Response(w, &resp, http.StatusOK)
 }
 
 // NewHandler creates a new handler for the profile service.
