@@ -3,12 +3,24 @@ package trivia
 import (
 	"errors"
 	"time"
+
+	"github.com/expixel/actual-trivia-server/trivia/null"
 )
 
 // User is a representation of a user profile.
 type User struct {
 	ID       int64
 	Username string
+
+	// these properties don't get saved to the DB:
+
+	// Guest is a flag that is set during authentication and denotes this particular
+	// user as a guest. Guest users all have a UserID of 0. A GuestID should be used
+	// for them instead for comparisons.
+	Guest bool
+
+	// GuestID is an identifier used for guest users.
+	GuestID null.Int64
 }
 
 // UserCred is a representation of a user's login credentials.
@@ -21,8 +33,8 @@ type UserCred struct {
 // AuthToken is a representation of an authentication used for signing and verifying requests to the API.
 type AuthToken struct {
 	Token     string
-	UserID    int64
-	GuestID   int64
+	UserID    null.Int64
+	GuestID   null.Int64
 	ExpiresAt time.Time
 }
 
@@ -33,8 +45,8 @@ type RefreshToken struct {
 	// AuthToken is the auth token that this refresh token is for.
 	AuthToken string
 
-	UserID    int64
-	GuestID   int64
+	UserID    null.Int64
+	GuestID   null.Int64
 	ExpiresAt time.Time
 }
 
@@ -76,6 +88,10 @@ type AuthTokenService interface {
 
 	// RefreshTokenExists returns true if the given token already exists in the database.
 	RefreshTokenExists(token string) (bool, error)
+
+	// GetAuthTokenAndUser gets an auth token as well as the associated user using the
+	// token string. This will return a null user if this is a token for a guest.
+	GetAuthTokenAndUser(token string) (*AuthToken, *User, error)
 }
 
 // An AuthService contains methods for authenticating users.
@@ -107,3 +123,10 @@ var ErrUserNotFound = errors.New("user not found for credentials")
 /// a user by email. The specifics of this error should not be made public to the user attempting to
 // login.
 var ErrIncorrectPassword = errors.New("password provided does not match user password")
+
+// ErrTokenExpired is an error retruned when a method that required a vlaid auth or refresh token
+// finds that a given token is no longer valid.
+var ErrTokenExpired = errors.New("token is expired")
+
+// ErrTokenNotFound is an error returned when an auth or refresh token cannot be found in the database.
+var ErrTokenNotFound = errors.New("token was not found")

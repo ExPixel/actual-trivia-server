@@ -3,6 +3,8 @@ package postgres
 import (
 	"database/sql"
 
+	"github.com/expixel/actual-trivia-server/trivia/null"
+
 	"github.com/expixel/actual-trivia-server/trivia"
 )
 
@@ -66,6 +68,35 @@ func (s *tokenService) RefreshTokenExists(token string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func (s *tokenService) GetAuthTokenAndUser(token string) (*trivia.AuthToken, *trivia.User, error) {
+	authToken := &trivia.AuthToken{}
+	var nullUserID null.Int64
+	var nullUsername null.String
+
+	err := s.db.QueryRow(`
+		SELECT
+			a.user_id, a.guest_id, a.expires_at,
+			u.id, u.username
+		FROM auth_tokens a
+		LEFT JOIN users u ON (a.user_id = u.id)
+		WHERE a.token = $1;
+	`, token).Scan(&authToken.UserID, &authToken.GuestID, &authToken.ExpiresAt, &nullUserID, &nullUsername)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil, nil
+		}
+		return nil, nil, err
+	}
+
+	authToken.Token = token
+	if !nullUserID.Valid || !nullUsername.Valid {
+		return authToken, nil, nil
+	}
+	user := &trivia.User{ID: nullUserID.Int64, Username: nullUsername.String}
+
+	return authToken, user, nil
 }
 
 // NewTokenService creats a use AuthTokenService

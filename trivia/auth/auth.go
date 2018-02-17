@@ -9,6 +9,7 @@ import (
 
 	"github.com/expixel/actual-trivia-server/eplog"
 	"github.com/expixel/actual-trivia-server/trivia"
+	"github.com/expixel/actual-trivia-server/trivia/null"
 )
 
 var logger = eplog.NewPrefixLogger("auth")
@@ -49,16 +50,16 @@ func (s *service) LoginWithEmail(email string, password string) (*trivia.TokenPa
 
 	authToken := &trivia.AuthToken{
 		Token:     authTokenString,
-		UserID:    creds.UserID,
-		GuestID:   0,
+		UserID:    null.NewInt64(creds.UserID),
+		GuestID:   null.Int64{},
 		ExpiresAt: authTokenExpiresAt,
 	}
 
 	refreshToken := &trivia.RefreshToken{
 		Token:     refreshTokenString,
 		AuthToken: authTokenString,
-		UserID:    creds.UserID,
-		GuestID:   0,
+		UserID:    null.NewInt64(creds.UserID),
+		GuestID:   null.Int64{},
 		ExpiresAt: refreshTokenExpiresAt,
 	}
 

@@ -2,9 +2,15 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
+
+	"github.com/expixel/actual-trivia-server/trivia"
 )
+
+var errTokenWithNoUserOrGuest = errors.New("token has no valid user_id or guest_id")
 
 type apiResponse struct {
 	Code    int         `json:"code"`
@@ -62,4 +68,36 @@ func RequireJSONBody(w http.ResponseWriter, r *http.Request, target interface{})
 		return err
 	}
 	return nil
+}
+
+// GetUserForAuthToken returns a user for a token or returns nil and an error if the user was null
+// or the token was expired. In the case of an expired token the error, ErrTokenExpired will be returned.
+func GetUserForAuthToken(token string, ts trivia.AuthTokenService) (*trivia.User, error) {
+	auth, user, err := ts.GetAuthTokenAndUser(token)
+	if err != nil {
+		return nil, err
+	}
+	if auth == nil {
+		return nil, trivia.ErrTokenNotFound
+	}
+	if !auth.GuestID.Valid && user == nil {
+		return nil, errTokenWithNoUserOrGuest
+	}
+
+	if user == nil {
+		user = &trivia.User{
+			ID:       0,
+			Username: fmt.Sprintf("#Guest%d", auth.GuestID.Int64),
+			Guest:    true,
+			GuestID:  auth.GuestID,
+		}
+	}
+
+	return user, nil
+}
+
+// GetRequestUser extracts a user from a request.
+func GetRequestUser(r *http.Request, ts trivia.AuthTokenService) (*trivia.User, error) {
+	// authHeader, ok := r.Header["Authorization"]
+	return nil, nil
 }
