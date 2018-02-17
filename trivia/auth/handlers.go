@@ -22,10 +22,6 @@ func (h *handler) signup(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 
-	type signupResponse struct {
-		UserID int64 `json:"userID"`
-	}
-
 	body := signupBody{}
 	if err := api.RequireJSONBody(w, r, &body); err != nil {
 		return
@@ -72,13 +68,6 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 	type loginBody struct {
 		Email    string `json:"username"`
 		Password string `json:"password"`
-	}
-
-	type loginResponse struct {
-		AuthToken             string `json:"authToken"`
-		AuthTokenExpiresAt    int64  `json:"authTokenExpiresAt"`
-		RefreshToken          string `json:"refreshToken"`
-		RefreshTokenExpiresAt int64  `json:"refreshTokenExpiresAt"`
 	}
 
 	body := loginBody{}
