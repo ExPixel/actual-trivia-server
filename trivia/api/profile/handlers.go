@@ -22,6 +22,8 @@ func (h *handler) me(w http.ResponseWriter, r *http.Request) {
 	resp := userProfileResponse{
 		ID:       currentUser.ID,
 		Username: currentUser.Username,
+		Guest:    currentUser.Guest,
+		GuestID:  currentUser.GuestID,
 	}
 	api.Response(w, &resp, http.StatusOK)
 }
