@@ -112,6 +112,12 @@ type AuthService interface {
 	LoginAsGuest() (*TokenPair, error)
 }
 
+// A GameService is a service responsible for coordinating running games,
+// creating new games, and connecting users to those games.
+type GameService interface {
+	// #TODO figure out what the game service is going to look like.
+}
+
 // ErrUsernameInUse is an error returned by an authentication service when trying to create a
 // user with a username that is already in use.
 var ErrUsernameInUse = errors.New("username is already in use")
