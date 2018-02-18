@@ -1,3 +1,4 @@
 Uncategorized:
     ☐ Sanitize usernames so that special characters and zero-widths spaces cannot be used. I should also
       stop people from having a hash (#) in their name as that character is used to denote guest usernames.
+    ☐ Add CORS headers and only "accept" requests from the same origin.
