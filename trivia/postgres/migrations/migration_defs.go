@@ -127,3 +127,11 @@ func mg004CreateAuthTokensTable(tx *sql.Tx) (err error) {
 
 	return
 }
+
+func mg005CreateGuestSequence(tx *sql.Tx) (err error) {
+	_, err = tx.Exec(`
+		CREATE SEQUENCE guest_id_sequence INCREMENT BY 1
+		MINVALUE 1 NO MAXVALUE START WITH 1;
+	`)
+	return
+}
