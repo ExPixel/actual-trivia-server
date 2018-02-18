@@ -102,11 +102,29 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 	api.Response(w, &resp, http.StatusOK)
 }
 
+// guest is an endpoint used to option a guest identity to endter games
+// without making an actual account.
+func (h *handler) guest(w http.ResponseWriter, r *http.Request) {
+	pair, err := h.authService.LoginAsGuest()
+	if err != nil {
+		logger.Error("error ocurred while generating guest tokens: ", err)
+		api.Error(w, "Unknown error occurred while logging in.", http.StatusInternalServerError)
+	}
+	resp := loginResponse{
+		AuthToken:             pair.Auth.Token,
+		AuthTokenExpiresAt:    pair.Auth.ExpiresAt.Unix(),
+		RefreshToken:          pair.Refresh.Token,
+		RefreshTokenExpiresAt: pair.Refresh.ExpiresAt.Unix(),
+	}
+	api.Response(w, &resp, http.StatusOK)
+}
+
 // NewHandler creates a new handler for requests to the authentication api.
 func NewHandler(as trivia.AuthService) http.Handler {
 	h := handler{authService: as}
 	r := mux.NewRouter()
 	r.HandleFunc("/v1/auth/signup", h.signup).Methods("POST")
 	r.HandleFunc("/v1/auth/login", h.login).Methods("POST")
+	r.HandleFunc("/v1/auth/guest", h.guest).Methods("POST")
 	return r
 }

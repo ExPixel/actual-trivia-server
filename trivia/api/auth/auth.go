@@ -37,48 +37,25 @@ func (s *service) LoginWithEmail(email string, password string) (*trivia.TokenPa
 		return nil, trivia.ErrIncorrectPassword
 	}
 
-	authTokenString, refreshTokenString, err := s.generateTokenStrings(creds.UserID)
+	authTokenString, refreshTokenString, err := s.generateTokenStrings(creds.UserID, false)
+	if err != nil {
+		return nil, err
+	}
+	return s.storeTokenStrings(null.NewInt64(creds.UserID), null.Int64{}, authTokenString, refreshTokenString)
+}
+
+func (s *service) LoginAsGuest() (*trivia.TokenPair, error) {
+	guestID, err := s.users.NextGuestID()
 	if err != nil {
 		return nil, err
 	}
 
-	// #FIXME this is annoying as hell for manual testing right now so I'm temporarily extended the
-	// token expiration delay. Will definitely have to change this back to something reasonable
-	// once I have a good API consumer set up (probably in a React application)
-
-	// const authTokenExpiresIn time.Duration = 5 * time.Minute
-	// const refreshTokenExpiresIn time.Duration = (24 * time.Hour) * 7
-
-	// #FIXME REMOVE THESE
-	const authTokenExpiresIn time.Duration = 14 * (24 * time.Hour)
-	const refreshTokenExpiresIn time.Duration = 30 * (24 * time.Hour)
-
-	now := time.Now()
-	authTokenExpiresAt := now.Add(authTokenExpiresIn)
-	refreshTokenExpiresAt := now.Add(refreshTokenExpiresIn)
-
-	authToken := &trivia.AuthToken{
-		Token:     authTokenString,
-		UserID:    null.NewInt64(creds.UserID),
-		GuestID:   null.Int64{},
-		ExpiresAt: authTokenExpiresAt,
-	}
-
-	refreshToken := &trivia.RefreshToken{
-		Token:     refreshTokenString,
-		AuthToken: authTokenString,
-		UserID:    null.NewInt64(creds.UserID),
-		GuestID:   null.Int64{},
-		ExpiresAt: refreshTokenExpiresAt,
-	}
-
-	err = s.tokens.CreateTokenPair(authToken, refreshToken)
+	authTokenString, refreshTokenString, err := s.generateTokenStrings(guestID, true)
 	if err != nil {
 		return nil, err
 	}
 
-	pair := &trivia.TokenPair{Auth: authToken, Refresh: refreshToken}
-	return pair, nil
+	return s.storeTokenStrings(null.Int64{}, null.NewInt64(guestID), authTokenString, refreshTokenString)
 }
 
 func (s *service) CreateUser(username string, email string, password string) (*trivia.User, *trivia.UserCred, error) {
@@ -111,8 +88,54 @@ func (s *service) CreateUser(username string, email string, password string) (*t
 	return user, creds, nil
 }
 
-func (s *service) generateTokenStrings(userID int64) (string, string, error) {
+// storeTokenStrings stores the generated auth and refresh tokens into the database and
+// returns the stored token pair.
+func (s *service) storeTokenStrings(userID null.Int64, guestID null.Int64, authTokenString string, refreshTokenString string) (*trivia.TokenPair, error) {
+	// #FIXME this is annoying as hell for manual testing right now so I'm temporarily extended the
+	// token expiration delay. Will definitely have to change this back to something reasonable
+	// once I have a good API consumer set up (probably in a React application)
+
+	// const authTokenExpiresIn time.Duration = 5 * time.Minute
+	// const refreshTokenExpiresIn time.Duration = (24 * time.Hour) * 7
+
+	// #FIXME REMOVE THESE
+	const authTokenExpiresIn time.Duration = 14 * (24 * time.Hour)
+	const refreshTokenExpiresIn time.Duration = 30 * (24 * time.Hour)
+
+	now := time.Now()
+	authTokenExpiresAt := now.Add(authTokenExpiresIn)
+	refreshTokenExpiresAt := now.Add(refreshTokenExpiresIn)
+
+	authToken := &trivia.AuthToken{
+		Token:     authTokenString,
+		UserID:    userID,
+		GuestID:   guestID,
+		ExpiresAt: authTokenExpiresAt,
+	}
+
+	refreshToken := &trivia.RefreshToken{
+		Token:     refreshTokenString,
+		AuthToken: authTokenString,
+		UserID:    userID,
+		GuestID:   guestID,
+		ExpiresAt: refreshTokenExpiresAt,
+	}
+
+	err := s.tokens.CreateTokenPair(authToken, refreshToken)
+	if err != nil {
+		return nil, err
+	}
+
+	pair := &trivia.TokenPair{Auth: authToken, Refresh: refreshToken}
+	return pair, nil
+}
+
+func (s *service) generateTokenStrings(userID int64, isGuest bool) (string, string, error) {
 	useIDStr := strconv.FormatInt(userID, 36)
+	if isGuest {
+		useIDStr = "0." + useIDStr
+	}
+
 	buffer := make([]byte, 32)
 	authTokenString := ""
 	refreshTokenString := ""

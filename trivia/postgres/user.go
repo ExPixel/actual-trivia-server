@@ -81,6 +81,15 @@ func (s *userService) DeleteUser(id int64) (bool, error) {
 	return aff > 0, nil
 }
 
+func (s *userService) NextGuestID() (int64, error) {
+	var gid int64
+	err := s.db.QueryRow("SELECT nextval('guest_id_sequence');").Scan(&gid)
+	if err != nil {
+		return 0, err
+	}
+	return gid, nil
+}
+
 // NewUserService returns a new user service backed by a postgres database.
 func NewUserService(db *sql.DB) trivia.UserService {
 	return &userService{db: db}

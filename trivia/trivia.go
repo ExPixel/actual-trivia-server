@@ -73,6 +73,9 @@ type UserService interface {
 	// DeleteUser deletes a user from the data store by ID, and returns true if a user with the
 	// given ID did exist and was deleted.
 	DeleteUser(id int64) (bool, error)
+
+	// NextGuestID generates an ID that should be used by the next guest account.
+	NextGuestID() (int64, error)
 }
 
 // An AuthTokenService contains methods for creating and retrieving authentication and refresh tokens.
@@ -96,7 +99,7 @@ type AuthTokenService interface {
 
 // An AuthService contains methods for authenticating users.
 type AuthService interface {
-	// AuthenticateByEmail attempts to authenticate a user by matching the email address and password
+	// LoginWithEmail attempts to authenticate a user by matching the email address and password
 	// with a user in the data store. Returns the found and authenticated user with authentication
 	// is successful. This may return one of the known errors: ErrUserNotFound, or ErrIncorrectPassword
 	// which are recoverable.
@@ -104,6 +107,9 @@ type AuthService interface {
 
 	// CreateUser creates a user and their credentials and adds them to the data store.
 	CreateUser(username string, email string, password string) (*User, *UserCred, error)
+
+	// LoginAsGuest creates a pair of tokens for a guest account.
+	LoginAsGuest() (*TokenPair, error)
 }
 
 // ErrUsernameInUse is an error returned by an authentication service when trying to create a
