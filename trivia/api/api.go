@@ -149,3 +149,24 @@ func RequireRequestUser(w http.ResponseWriter, r *http.Request, ts trivia.AuthTo
 	}
 	return user, err
 }
+
+type corsHandler struct {
+	inner http.Handler
+}
+
+// WrapAPIHandler wraps an http handler with CORs functionality.
+func WrapAPIHandler(h http.Handler) http.Handler {
+	return &corsHandler{inner: h}
+}
+
+func (c *corsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	c.inner.ServeHTTP(w, r)
+}

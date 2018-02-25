@@ -58,7 +58,7 @@ func (c *Conn) StartReadLoop() {
 
 	if atomic.LoadInt32(&c.stopped) != 0 {
 		// we send our own synthetic close message from the end of the read loop.
-		c.recvChan <- message.SocketClosedMessage
+		c.recvChan <- &message.SocketClosed{}
 	}
 
 	eplog.Debug("websocket", "started ws reading loop") // #TODO remove test code
@@ -77,7 +77,7 @@ func (c *Conn) StartReadLoop() {
 			// to whatever goroutine is currently writing or consuming the messages
 			// so for now I just print the error out. Maybe I could create a special
 			// error "json" message just for handling errors the way I do closes.
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				eplog.Error("websocket", "unexpected error while reading from websocket: %s", err)
 			}
 			break
@@ -104,7 +104,7 @@ func (c *Conn) StartReadLoop() {
 	eplog.Debug("websocket", "stopped ws reading loop") // #TODO remove test code
 
 	// we send our own synthetic close message from the end of the read loop.
-	c.recvChan <- message.SocketClosedMessage
+	c.recvChan <- &message.SocketClosed{}
 }
 
 // WriteMessage writes a game message as json to the underlying websocket.
@@ -123,7 +123,7 @@ func (c *Conn) WriteMessage(msg interface{}) {
 	err = c.wsConn.WriteMessage(websocket.TextMessage, c.writeBuffer.Bytes())
 
 	if err != nil {
-		if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
+		if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 			eplog.Error("websocket", "unexpected error while writing to websocket: %s", err)
 		}
 		c.stop()
@@ -136,7 +136,7 @@ func (c *Conn) Close() {
 	if err != nil {
 		// #FIXME I'm not actually even sure what errors to epect here
 		// but this seems right, so I'll take a look later.
-		if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
+		if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 			eplog.Error("websocket", "unexpected error while closing websocket: %s", err)
 		}
 	}

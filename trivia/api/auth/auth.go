@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/expixel/actual-trivia-server/trivia/validate"
+
 	"github.com/expixel/actual-trivia-server/eplog"
 	"github.com/expixel/actual-trivia-server/trivia"
 	"github.com/expixel/actual-trivia-server/trivia/null"
@@ -23,8 +25,16 @@ type service struct {
 	tokens trivia.AuthTokenService
 }
 
-func (s *service) LoginWithEmail(email string, password string) (*trivia.TokenPair, error) {
-	creds, err := s.users.CredByEmail(email)
+func (s *service) LoginWithEmailOrUsername(emailOrUsername string, password string) (*trivia.TokenPair, error) {
+	var creds *trivia.UserCred
+	var err error
+
+	if validate.IsEmail(emailOrUsername) {
+		creds, err = s.users.CredByEmail(emailOrUsername)
+	} else {
+		creds, err = s.users.CredByUsername(emailOrUsername)
+	}
+
 	if err != nil {
 		return nil, err
 	}

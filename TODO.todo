@@ -2,3 +2,13 @@ Uncategorized:
     ☐ Sanitize usernames so that special characters and zero-widths spaces cannot be used. I should also
       stop people from having a hash (#) in their name as that character is used to denote guest usernames.
     ☐ Add CORS headers and only "accept" requests from the same origin.
+
+Server:
+  ✔ Change the Login API so that it accepts either a username or an email address. @done (2018-2-22 09:56:58)
+
+UI Bugs:
+  ✔ Fix the main menu UI so that the menu items list can be scrolled if there is not enough space @done (2018-2-22 09:57:03)
+  ☐ Consider fixing the issue of routes not being rerendered because location is passed through the context
+    by wrapping components in a pathless route instead of what I'm currently doing which is overriding 
+    shouldComponentUpdate. I like my solution more for now because it basically does the same thing
+    without adding yet another component to delgate crap to its children while polluting my devtools.

@@ -67,6 +67,9 @@ type UserService interface {
 	// CredByEmail finds a user's credentials using an email address.
 	CredByEmail(email string) (*UserCred, error)
 
+	// CredByUsername finds a user's credentials using a username.
+	CredByUsername(username string) (*UserCred, error)
+
 	// CreateUser creates a user as well as their credentials.
 	CreateUser(user *User, cred *UserCred) error
 
@@ -99,11 +102,11 @@ type AuthTokenService interface {
 
 // An AuthService contains methods for authenticating users.
 type AuthService interface {
-	// LoginWithEmail attempts to authenticate a user by matching the email address and password
+	// LoginWithEmailOrUsername attempts to authenticate a user by matching the email address or username  and password
 	// with a user in the data store. Returns the found and authenticated user with authentication
 	// is successful. This may return one of the known errors: ErrUserNotFound, or ErrIncorrectPassword
 	// which are recoverable.
-	LoginWithEmail(email string, password string) (*TokenPair, error)
+	LoginWithEmailOrUsername(emailOrUsername string, password string) (*TokenPair, error)
 
 	// CreateUser creates a user and their credentials and adds them to the data store.
 	CreateUser(username string, email string, password string) (*User, *UserCred, error)

@@ -33,5 +33,5 @@ func NewHandler(us trivia.UserService, ts trivia.AuthTokenService) http.Handler 
 	h := handler{userService: us, tokenService: ts}
 	r := mux.NewRouter()
 	r.HandleFunc("/v1/profile/me", h.me).Methods("GET")
-	return r
+	return api.WrapAPIHandler(r)
 }

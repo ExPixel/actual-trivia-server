@@ -34,6 +34,3 @@ func DecodeMessage(incomingMessage []byte) (interface{}, error) {
 	msg, err := unmarshalIncomingPayload(&m)
 	return msg, err
 }
-
-// Wrapped message that should be sent when a socket has been closed.
-var SocketClosedMessage = []byte(`{ "tag": "@socket-closed" }`)

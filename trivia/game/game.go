@@ -3,8 +3,12 @@ package game
 import (
 	"sync"
 
+	"github.com/expixel/actual-trivia-server/eplog"
+
 	"github.com/expixel/actual-trivia-server/trivia"
 )
+
+var logger = eplog.NewPrefixLogger("game")
 
 // TriviaGamesSet contains a set of trivia games that are currently running.
 type TriviaGamesSet struct {

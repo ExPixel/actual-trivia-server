@@ -66,7 +66,7 @@ func (h *handler) signup(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 	type loginBody struct {
-		Email    string `json:"username"`
+		Username string `json:"username"`
 		Password string `json:"password"`
 	}
 
@@ -79,13 +79,13 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 	// and password in here and make sure that they don't go over our limits.
 	// for now this should be fine though.
 
-	pair, err := h.authService.LoginWithEmail(body.Email, body.Password)
+	pair, err := h.authService.LoginWithEmailOrUsername(body.Username, body.Password)
 	if err != nil {
 		switch err {
 		case trivia.ErrUserNotFound:
-			api.Error(w, "No user with the given email and password.", http.StatusNotFound)
+			api.Error(w, "No user with the given email/username and password.", http.StatusNotFound)
 		case trivia.ErrIncorrectPassword:
-			api.Error(w, "No user with the given email and password.", http.StatusNotFound)
+			api.Error(w, "No user with the given email/username and password.", http.StatusNotFound)
 		default:
 			logger.Error("error ocurred while logging in with email and password: ", err)
 			api.Error(w, "Unknown error occurred while logging in.", http.StatusInternalServerError)
@@ -126,5 +126,5 @@ func NewHandler(as trivia.AuthService) http.Handler {
 	r.HandleFunc("/v1/auth/signup", h.signup).Methods("POST")
 	r.HandleFunc("/v1/auth/login", h.login).Methods("POST")
 	r.HandleFunc("/v1/auth/guest", h.guest).Methods("POST")
-	return r
+	return api.WrapAPIHandler(r)
 }

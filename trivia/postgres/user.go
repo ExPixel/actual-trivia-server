@@ -47,6 +47,23 @@ func (s *userService) CredByEmail(email string) (*trivia.UserCred, error) {
 	return &cred, nil
 }
 
+func (s *userService) CredByUsername(username string) (*trivia.UserCred, error) {
+	var cred trivia.UserCred
+	row := s.db.QueryRow(`
+		SELECT c.user_id, c.email, c.password
+		FROM users u
+		LEFT JOIN user_creds c ON (u.id = c.user_id)
+		WHERE lower(u.username) = lower($1)
+	`, username)
+	if err := row.Scan(&cred.UserID, &cred.Email, &cred.Password); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &cred, nil
+}
+
 func (s *userService) CreateUser(user *trivia.User, cred *trivia.UserCred) error {
 	return transact(s.db, func(tx *sql.Tx) error {
 		var userID int64
