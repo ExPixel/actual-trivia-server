@@ -31,7 +31,7 @@ type Conn struct {
 	stopped int32
 
 	// writeLock should be acquired before writing any messages to wsConn
-	writeLock sync.Mutex
+	writeLock *sync.Mutex
 
 	// writeBuffer is a buffer used for encoding messages to JSON to send
 	// them to the client.
@@ -45,7 +45,7 @@ func NewWSConn(conn *websocket.Conn) *Conn {
 		recvChan:    make(chan interface{}, 4),
 		recvBuffer:  bytes.Buffer{},
 		stopped:     0,
-		writeLock:   sync.Mutex{},
+		writeLock:   &sync.Mutex{},
 		writeBuffer: bytes.Buffer{},
 	}
 }
