@@ -12,6 +12,7 @@ var errUnknownOutgoingTag = errors.New("trivia: unknown outgoing message tag")
 const (
 	tagUnknown           = OutgoingMessageType("o-unknown")
 	tagGameNotFound      = OutgoingMessageType("game-not-found")
+	tagUserNotFound      = OutgoingMessageType("user-not-found")
 	tagClientInfoRequest = OutgoingMessageType("client-info-request")
 )
 
@@ -21,6 +22,9 @@ type GameNotFound struct{}
 // ClientInfoRequest is an outgoing message used to request that the client send it's authentication token and other information.
 type ClientInfoRequest struct{}
 
+// UserNotFound is an outgoing message sent when a user cannot be authenticated with a ClientAuthInfo
+type UserNotFound struct{}
+
 // #NOTE should only define outgoing messages in here
 func getTagForOutgoingPayload(payload interface{}) (OutgoingMessageType, error) {
 	switch payload.(type) {
@@ -28,6 +32,8 @@ func getTagForOutgoingPayload(payload interface{}) (OutgoingMessageType, error) 
 		return tagGameNotFound, nil
 	case *ClientInfoRequest:
 		return tagClientInfoRequest, nil
+	case *UserNotFound:
+		return tagUserNotFound, nil
 	}
 	return tagUnknown, errUnknownOutgoingTag
 }

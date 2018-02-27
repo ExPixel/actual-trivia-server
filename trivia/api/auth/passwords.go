@@ -12,7 +12,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// default pepper that is used if SetAESKeyHex is not called from somewhere else.
+// Default pepper that is used if SetAESKeyHex is not called from somewhere else. It's never used.
 const passwordAESPepper = "7c001eb77d617bc94ee1c357c23932dbe6713833022535afc779dfb04ffb06fd"
 const bcryptCost int = 10
 

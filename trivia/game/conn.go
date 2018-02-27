@@ -36,10 +36,14 @@ type Conn struct {
 	// writeBuffer is a buffer used for encoding messages to JSON to send
 	// them to the client.
 	writeBuffer bytes.Buffer
+
+	// recvCond is a conditional variable that when non nil should be broadcasted
+	// to when there is a message available in this websocket.
+	recvCond *sync.Cond
 }
 
 // NewWSConn creates a new wrapped web socket connection.
-func NewWSConn(conn *websocket.Conn) *Conn {
+func NewWSConn(conn *websocket.Conn, recvCond *sync.Cond) *Conn {
 	return &Conn{
 		wsConn:      conn,
 		recvChan:    make(chan interface{}, 4),
@@ -47,6 +51,7 @@ func NewWSConn(conn *websocket.Conn) *Conn {
 		stopped:     0,
 		writeLock:   &sync.Mutex{},
 		writeBuffer: bytes.Buffer{},
+		recvCond:    recvCond,
 	}
 }
 
@@ -59,6 +64,9 @@ func (c *Conn) StartReadLoop() {
 	if atomic.LoadInt32(&c.stopped) != 0 {
 		// we send our own synthetic close message from the end of the read loop.
 		c.recvChan <- &message.SocketClosed{}
+		if c.recvCond != nil {
+			c.recvCond.Signal()
+		}
 	}
 
 	eplog.Debug("websocket", "started ws reading loop") // #TODO remove test code
@@ -94,6 +102,9 @@ func (c *Conn) StartReadLoop() {
 				eplog.Error("websocket", "error while decoding websocket message: %s", err)
 			}
 			c.recvChan <- msg
+			if c.recvCond != nil {
+				c.recvCond.Signal()
+			}
 		} else if messageType == websocket.CloseMessage {
 			// #FIXME not sure if I need to be reading this message
 			// as I already handle the close from the error step above.
@@ -105,6 +116,9 @@ func (c *Conn) StartReadLoop() {
 
 	// we send our own synthetic close message from the end of the read loop.
 	c.recvChan <- &message.SocketClosed{}
+	if c.recvCond != nil {
+		c.recvCond.Signal()
+	}
 }
 
 // WriteMessage writes a game message as json to the underlying websocket.

@@ -84,6 +84,8 @@ func main() {
 	authPepper256, ok := getStringValue(config.Auth.Pepper256)
 	if ok {
 		auth.SetAESKeyHex(authPepper256)
+	} else {
+		panic("Woah there! Need a unique AES Key.")
 	}
 
 	mgSuccess := migrations.RunMigrations(db)
@@ -103,7 +105,7 @@ func main() {
 	// ## handlers
 	authHandler := auth.NewHandler(authService)
 	profileHandler := profile.NewHandler(userService, tokenService)
-	gameHandler := game.NewHandler()
+	gameHandler := game.NewHandler(tokenService)
 	r := http.NewServeMux()
 	r.Handle("/v1/auth/", withLogging(authHandler))
 	r.Handle("/v1/profile/", withLogging(profileHandler))
@@ -148,6 +150,8 @@ func main() {
 	eplog.Stop()
 	eplog.WaitForStop()
 	log.Println("shutdown.")
+
+	// #TODO Find a good way to stop all of the ongoing games here. Might not be necessary though.
 
 	os.Exit(0)
 }
