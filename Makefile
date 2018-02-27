@@ -16,7 +16,7 @@ deps:
 	dep ensure -v
 
 install:
-	go install -v ./...
+	go install -race -v ./...
 
 # Makes sure that a variable is defined.
 guard-%:
