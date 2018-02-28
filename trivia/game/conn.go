@@ -2,8 +2,6 @@ package game
 
 import (
 	"bytes"
-	"encoding/json"
-	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -31,11 +29,10 @@ type Conn struct {
 	stopped int32
 
 	// writeLock should be acquired before writing any messages to wsConn
-	writeLock *sync.Mutex
-
-	// writeBuffer is a buffer used for encoding messages to JSON to send
-	// them to the client.
-	writeBuffer bytes.Buffer
+	// writeLock *sync.Mutex
+	// #CLEANUP the write lock isn't needed for now because I've decided to keep
+	// all writes to the socket on the same goroutine, but this may change later
+	// I don't know.
 
 	// recvCond is a conditional variable that when non nil should be broadcasted
 	// to when there is a message available in this websocket.
@@ -45,13 +42,14 @@ type Conn struct {
 // NewWSConn creates a new wrapped web socket connection.
 func NewWSConn(conn *websocket.Conn, recvCond *sync.Cond) *Conn {
 	return &Conn{
-		wsConn:      conn,
-		recvChan:    make(chan interface{}, 4),
-		recvBuffer:  bytes.Buffer{},
-		stopped:     0,
-		writeLock:   &sync.Mutex{},
-		writeBuffer: bytes.Buffer{},
-		recvCond:    recvCond,
+		wsConn:     conn,
+		recvChan:   make(chan interface{}, 4),
+		recvBuffer: bytes.Buffer{},
+		stopped:    0,
+		recvCond:   recvCond,
+
+		// #CLEANUP remove this write lock code once I've made up my mind.
+		// writeLock:   &sync.Mutex{},
 	}
 }
 
@@ -121,24 +119,12 @@ func (c *Conn) StartReadLoop() {
 	}
 }
 
-// WriteMessage writes a game message as json to the underlying websocket.
-func (c *Conn) WriteMessage(msg interface{}) {
-	c.writeLock.Lock()
-	defer c.writeLock.Unlock()
-
-	wrapped, err := message.WrapMessage(msg)
-	if err != nil {
-		panic(fmt.Sprintf("websocket: attempted to send unencodeable message through websocket: %s", err))
-	}
-
-	c.writeBuffer.Reset()
-	encoder := json.NewEncoder(&c.writeBuffer)
-	encoder.Encode(wrapped)
-	err = c.wsConn.WriteMessage(websocket.TextMessage, c.writeBuffer.Bytes())
-
+// WriteBytes writes some bytes to the websocket as a text message.
+func (c *Conn) WriteBytes(b []byte) {
+	err := c.wsConn.WriteMessage(websocket.TextMessage, b)
 	if err != nil {
 		if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-			eplog.Error("websocket", "unexpected error while writing to websocket: %s", err)
+			eplog.Error("websocket", "unexpected error while writing to websocket: %s", err.Error())
 		}
 		c.stop()
 	}

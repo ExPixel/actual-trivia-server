@@ -1,7 +1,9 @@
 package message
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 )
 
 // JSONMessage is an outgoing JSON message with a type tag and a payload.
@@ -33,4 +35,22 @@ func DecodeMessage(incomingMessage []byte) (interface{}, error) {
 	}
 	msg, err := unmarshalIncomingPayload(&m)
 	return msg, err
+}
+
+// MustEncodeBytes encodes a message as bytes and panics if an error occurs.
+func MustEncodeBytes(msg interface{}) []byte {
+	buf := bytes.Buffer{}
+	encoder := json.NewEncoder(&buf)
+
+	wrapped, err := WrapMessage(msg)
+	if err != nil {
+		panic(fmt.Sprintf("error occurred while wrapping message: %s", err.Error()))
+	}
+
+	err = encoder.Encode(wrapped)
+	if err != nil {
+		panic(fmt.Sprintf("error occurred while encoding wrapped message: %s", err.Error()))
+	}
+
+	return buf.Bytes()
 }

@@ -1,6 +1,8 @@
 package game
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -17,6 +19,9 @@ var logger = eplog.NewPrefixLogger("game")
 
 // ErrGameNotFound is returned when trying to use a Game ID that does not exist.
 var ErrGameNotFound = errors.New("no game with the given ID was found")
+
+var bmUserNotFound = message.MustEncodeBytes(&message.UserNotFound{})
+var bmClientInfoRequest = message.MustEncodeBytes(&message.ClientInfoRequest{})
 
 // TriviaGamesSet contains a set of trivia games that are currently running.
 type TriviaGamesSet struct {
@@ -52,6 +57,9 @@ func (set *TriviaGamesSet) GetGame(gameID string) (game *TriviaGame, ok bool) {
 
 // CreateGame creates a new game with the given ID and options.
 func (set *TriviaGamesSet) CreateGame(gameID string, gameOptions *TriviaGameOptions) error {
+	msgPendingCond := &sync.Cond{L: &sync.Mutex{}}
+	timerChan := make(chan bool, 1)
+
 	game := &TriviaGame{
 		ID:                  gameID,
 		gameFinishedChan:    set.gameFinishedChan,
@@ -59,11 +67,15 @@ func (set *TriviaGamesSet) CreateGame(gameID string, gameOptions *TriviaGameOpti
 		clients:             make([]*TriviaGameClient, 0),
 		clientConnectedChan: make(chan *Conn, 16),
 		stopGameChan:        make(chan bool, 1),
-		MsgPendingCond:      &sync.Cond{L: &sync.Mutex{}},
+		MsgPendingCond:      msgPendingCond,
 		options:             gameOptions,
-		gameWaitForIOChan:   make(chan bool, 1),
-		gameWakeupCond:      &sync.Cond{L: &sync.Mutex{}},
 		tokenService:        set.tokenService,
+		gameTickTimerChan:   timerChan,
+		broadcastBuffer:     bytes.Buffer{},
+		gameTickTimer: time.AfterFunc(0, func() {
+			timerChan <- true
+			msgPendingCond.Signal()
+		}),
 	}
 
 	if _, ok := set.games[gameID]; ok {
@@ -84,28 +96,11 @@ type State int
 // that is partly run on the IO loop goroutine and
 // the game goroutine.
 const (
-	// gameStateWaitForStart: The game goroutine starts out locked and in this state and waits for
-	// there to be enough players in a room to be woken up. (it may also wait for a leading player - if there is one - to start the game. )
 	gameStateWaitForStart = State(iota)
-
-	// #TODO I might need an intermediate state for the countdown to game state.
-
-	// gameStateQuestion: There is a new question waiting and it should be broadcasted to users.
-	// The IO loop will immediately switch to gameStateAnswers after it has finished
-	// broadcasting the question to players.
+	gameStateCountdownToStart
 	gameStateQuestion
-
-	// gameStateAnswers: Waiting for players to input their answers to questions.
-	// The game goroutine will wait a delay (specified in options) before changing
-	// to the next state to being processing answers.
 	gameStateAnswers
-
-	// gameStateProcessing: The game goroutine goes through answers and marks them as correct
-	// or incorrect during this state and sets point values.
 	gameStateProcessing
-
-	// gameStateReporting: The IO goroutine sends point values and reports to players whether they got
-	// the previous question right or wrong during this state.
 	gameStateReporting
 )
 
@@ -140,23 +135,36 @@ type TriviaGame struct {
 
 	tokenService trivia.AuthTokenService
 
-	// gameWaitForIOChan is used to signal the IO loop that the goroutine is waiting to be woken up.
-	gameWaitForIOChan chan bool
-
-	// gameWakupCond is a CondVar used to wakeup the game after it has started waiting for the IO loop
-	// to complete a single tick.
-	gameWakeupCond *sync.Cond
-
-	// currentState is the current state of the game. This is usually being written
-	// to by the game goroutine and waitForIO should be called immediately after a change
-	// in order to ensure that the change is visible to the IO goroutine.
-	currentState State
-
 	// participationClosed is true if the game should no longer accept participation.
 	participationClosed bool
 
 	participantsCount int
 	spectatorsCount   int
+
+	// currentState represents the current state of the game. A state of gameStateWaitingToStart
+	currentState State
+
+	// gameTickWaiting is true if the game loop should only run the next game tick
+	// after the timer fires in the current iteration of the game loop.
+	gameTickWaiting bool
+
+	// gameTickTimer is the timer that is waited on before executing the next tick of the game.
+	// this timer will wakeup the IO loop once it has completed.
+	gameTickTimer *time.Timer
+
+	// gameTickTimerChan receives true from the timer goroutine when the timer has completed.
+	gameTickTimerChan chan bool
+
+	// gameCountdownEnd is the time at which the game should end the countdown
+	// and move on to the next state of the game.
+	gameCountdownEnd time.Time
+
+	// skipLoopPase if this is true the game will not wait on the condition variable for the
+	// current iteration of the game loop.
+	skipLoopPause bool
+
+	// broadcastBuffer is a buffer used to encode messages before they are broadcasted to a client.
+	broadcastBuffer bytes.Buffer
 }
 
 // TriviaGameOptions are a set of options for a single trivia game.
@@ -194,8 +202,7 @@ type TriviaGameClient struct {
 
 // Start starts the trivia game.
 func (g *TriviaGame) Start() {
-	go g.startIOLoop()
-	go g.startGame()
+	go g.startLoop()
 }
 
 // Stop stops the game as well as the connection loop.
@@ -210,8 +217,8 @@ func (g *TriviaGame) AddConn(conn *Conn) {
 	g.MsgPendingCond.Signal()
 }
 
-// startIOLoop runs a loop that waits for new connections to the game.
-func (g *TriviaGame) startIOLoop() {
+// startLoop runs the game's loop which handles both IO and the actual game.
+func (g *TriviaGame) startLoop() {
 	logger.Debug("game(%s) started connection loop", g.ID) // #TODO remove debug code
 	stopGameChanClosed := false
 
@@ -219,39 +226,42 @@ connectionLoop:
 	for {
 		logger.Debug("connection loop tick (%d pending)", len(g.pendingClients))
 
-		// true if the game goroutine is waiting to hear back about an IO loop tick completing.
-		waitingForIOLoop := false
-
-	pendingClientsLoop:
+		executeNextTick := !g.gameTickWaiting
+	selectIOLoop:
 		for {
 			select {
 			case conn := <-g.clientConnectedChan:
 				g.pendingClients = append(g.pendingClients, conn)
 				logger.Debug("client %s added to pending clients", conn.wsConn.RemoteAddr()) // #TODO remove debug code
-				conn.WriteMessage(&message.ClientInfoRequest{})
+				conn.WriteBytes(bmClientInfoRequest)
 			case val, ok := <-g.stopGameChan:
 				stopGameChanClosed = !ok
 				if val || !ok {
 					break connectionLoop
 				}
-			case waiting := <-g.gameWaitForIOChan:
-				logger.Debug("I know you're waiting fam.")
-				waitingForIOLoop = waiting
+			case v := <-g.gameTickTimerChan:
+				if v && g.gameTickWaiting {
+					executeNextTick = true
+					g.gameTickWaiting = false
+				}
 			default:
-				break pendingClientsLoop
+				break selectIOLoop
 			}
 		}
 
 		g.handlePendingClients()
-		g.ioGameTick()
-		if waitingForIOLoop {
-			g.gameWakeupCond.Signal() // let the game goroutine know that we're done.
+		if executeNextTick {
+			g.gameTick()
 		}
 
-		// wait for some kind of message to come in.
-		g.MsgPendingCond.L.Lock()
-		g.MsgPendingCond.Wait()
-		g.MsgPendingCond.L.Unlock()
+		if g.skipLoopPause {
+			g.skipLoopPause = false
+		} else {
+			// wait for some kind of message to come in.
+			g.MsgPendingCond.L.Lock()
+			g.MsgPendingCond.Wait()
+			g.MsgPendingCond.L.Unlock()
+		}
 	}
 
 	if !stopGameChanClosed {
@@ -259,22 +269,6 @@ connectionLoop:
 	}
 
 	logger.Debug("game(%s) stopped connection loop", g.ID) // #TODO remove debug code
-}
-
-// startGame starts the actual trivia game once enough players have connected.
-func (g *TriviaGame) startGame() {
-	logger.Debug("game(%s) started game routine", g.ID) // #TODO remove debug code
-
-	g.gameWakeupCond.L.Lock()
-	g.gameWakeupCond.Wait()
-	g.gameWakeupCond.L.Unlock()
-
-	logger.Debug("game(%s) game is no longer in the waiting state.")
-	// #TODO set the current question first here. We'll handle actually fetching the questions later.
-	g.currentState = gameStateQuestion
-	g.waitForIO()
-
-	logger.Debug("game(%s) ended game routine", g.ID) // #TODO remove debug code
 }
 
 func (g *TriviaGame) addGameClient(conn *Conn, user *trivia.User) {
@@ -295,26 +289,82 @@ func (g *TriviaGame) addGameClient(conn *Conn, user *trivia.User) {
 	g.clients = append(g.clients, client)
 }
 
-// waitForIO waits for one IO loop to pass before continuing.
-func (g *TriviaGame) waitForIO() {
-	g.gameWaitForIOChan <- true
-	g.MsgPendingCond.Signal()
-
-	g.gameWakeupCond.L.Lock()
-	g.gameWakeupCond.Wait()
-	g.gameWakeupCond.L.Unlock()
-}
-
-// ioGameTick executes a game tick for the IO loop.
-func (g *TriviaGame) ioGameTick() {
+func (g *TriviaGame) gameTick() {
+	logger.Debug("game tick executed")
 	switch g.currentState {
 	case gameStateWaitForStart:
+		logger.Debug("checking participants count: %d >= %d", g.participantsCount, g.options.MinParticipants)
 		if g.participantsCount >= g.options.MinParticipants {
-			logger.Debug("You have enough players now, fam.")
+			g.gameCountdownEnd = time.Now().Add(g.options.GameStartDelay)
+			g.currentState = gameStateCountdownToStart
+			g.broadcastMessage(&message.GameStartCountdownTick{Begin: true, SecondsRemaining: int(g.options.GameStartDelay.Seconds())})
+			g.tickImm()
+		}
+	case gameStateCountdownToStart:
+		logger.Debug("countdown...")
+		now := time.Now()
+		if now.After(g.gameCountdownEnd) {
+			// #TODO set the game question here first.
+			g.currentState = gameStateQuestion
+			g.broadcastMessage(&message.GameStart{})
+			g.tickImm()
+		} else {
+			var waitDur time.Duration
+			untilEnd := g.gameCountdownEnd.Sub(now)
+			if untilEnd < time.Second {
+				waitDur = untilEnd
+			} else {
+				waitDur = time.Second
+			}
+			g.broadcastMessage(&message.GameStartCountdownTick{Begin: true, SecondsRemaining: int(untilEnd.Seconds())})
+			g.tickWait(waitDur)
+			logger.Debug("countdown waiting for %s", waitDur.String())
 		}
 	default:
-		logger.Error("unknown game state: %d", g.currentState)
+		logger.Error("reached unexpected game state %d", g.currentState)
 	}
+}
+
+// broadcastMessage sends a single message to all connected trivia game clients.
+func (g *TriviaGame) broadcastMessage(msg interface{}) {
+	wrapped, err := message.WrapMessage(msg)
+	if err != nil {
+		logger.Error("error wrapping broadcast message: %s", err.Error())
+		return
+	}
+
+	g.broadcastBuffer.Reset()
+	encoder := json.NewEncoder(&g.broadcastBuffer)
+	err = encoder.Encode(wrapped)
+	if err != nil {
+		logger.Error("error encoding broadcast message: %s", err.Error())
+		return
+	}
+
+	b := g.broadcastBuffer.Bytes()
+	for _, c := range g.clients {
+		c.Conn.WriteBytes(b)
+	}
+}
+
+// tickImm causes the next tick of the game to be executed immediately.
+// Use this when you don't want the game loop to pause after a tick.
+func (g *TriviaGame) tickImm() {
+	g.gameTickWaiting = false
+	g.gameTickTimer.Stop()
+	g.skipLoopPause = true
+}
+
+// tickWait sets the delay until the next game tick.
+func (g *TriviaGame) tickWait(dur time.Duration) {
+	if dur <= 0 {
+		g.tickImm()
+		return
+	}
+
+	g.gameTickWaiting = true
+	g.gameTickTimer.Stop()
+	g.gameTickTimer.Reset(dur)
 }
 
 // handlePendingClients handle ClientAuth messages from pending clients and remove them from the waiting list
@@ -333,7 +383,7 @@ func (g *TriviaGame) handlePendingClients() {
 				if err != nil {
 					logger.Error("error getting user auth: %s", err)
 				} else if user == nil {
-					c.WriteMessage(&message.UserNotFound{})
+					c.WriteBytes(bmUserNotFound)
 				} else {
 					g.addGameClient(c, user)
 				}

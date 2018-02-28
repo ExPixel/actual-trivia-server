@@ -12,6 +12,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+var bmGameNotFound = message.MustEncodeBytes(&message.GameNotFound{})
+
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		// #FIXME I should have a same origin policy in here.
@@ -42,7 +44,7 @@ func (h *handler) enterGame(w http.ResponseWriter, r *http.Request) {
 	} else {
 		conn := NewWSConn(rawConn, nil)
 		// we don't bother to start the read loop
-		conn.WriteMessage(&message.GameNotFound{})
+		conn.WriteBytes(bmGameNotFound)
 		conn.Close()
 	}
 }
