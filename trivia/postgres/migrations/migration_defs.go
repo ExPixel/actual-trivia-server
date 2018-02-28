@@ -135,3 +135,17 @@ func mg005CreateGuestSequence(tx *sql.Tx) (err error) {
 	`)
 	return
 }
+
+func mg006CreateQuestionsTable(tx *sql.Tx) (err error) {
+	_, err = tx.Exec(`
+		CREATE TABLE questions (
+			id BIGSERIAL PRIMARY KEY,
+			category VARCHAR(128),
+			difficulty INTEGER,
+			prompt TEXT,
+			choices TEXT[],
+			correct_choice INTEGER
+		)
+	`)
+	return
+}

@@ -16,6 +16,7 @@ func init() {
 	register(3, "create_user_creds_table", mg003CreateUserCredsTable)
 	register(4, "create_auth_tokens_table", mg004CreateAuthTokensTable)
 	register(5, "create_guest_id_sequence", mg005CreateGuestSequence)
+	register(6, "create_questions_table", mg006CreateQuestionsTable)
 }
 
 // MigrationFunc is a function that executes a migration on a transaction.
