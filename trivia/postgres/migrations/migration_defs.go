@@ -144,8 +144,9 @@ func mg006CreateQuestionsTable(tx *sql.Tx) (err error) {
 			difficulty INTEGER,
 			prompt TEXT,
 			choices TEXT[],
-			correct_choice INTEGER
-		)
+			correct_choice INTEGER,
+			source VARCHAR(128)
+		);
 	`)
 	return
 }
