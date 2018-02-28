@@ -49,19 +49,19 @@ func RunMigrations(db *sql.DB) (success bool) {
 		mg_lock BOOLEAN
 	);`)
 	if err != nil {
-		logger.Error("error creating migration locking table: ", err)
+		logger.Error("error creating migration locking table: %s", err)
 		return
 	}
 
 	if err = waitForMigrationLock(db, 1*time.Second, 10*time.Second); err != nil {
-		logger.Error("error while waiting for migration lock: ", err)
+		logger.Error("error while waiting for migration lock: %s", err)
 		return
 	}
 
 	completedMigrations := 0
 	defer func() {
 		if err = unlockMigrations(db); err != nil {
-			logger.Error("error while unlocking migrations: ", err)
+			logger.Error("error while unlocking migrations: %s", err)
 			success = false
 		} else {
 			if completedMigrations < 1 {
@@ -72,13 +72,13 @@ func RunMigrations(db *sql.DB) (success bool) {
 		}
 	}()
 	if err = lockMigrations(db); err != nil {
-		logger.Error("error while locking migrations: ", err)
+		logger.Error("error while locking migrations: %s", err)
 		return
 	}
 
 	latest, err := getLatestMigration(db)
 	if err != nil {
-		logger.Error("error while getting latest migration: ", err)
+		logger.Error("error while getting latest migration: %s", err)
 		return
 	}
 
@@ -90,28 +90,28 @@ func RunMigrations(db *sql.DB) (success bool) {
 
 		tx, err := db.Begin()
 		if err != nil {
-			logger.Error("error while starting transaction for migration %d_%s: ", m.Version, m.Name, err)
+			logger.Error("error while starting transaction for migration %d_%s: %s", m.Version, m.Name, err)
 			return
 		}
 
 		err = m.Func(tx)
 		if err != nil {
-			logger.Error("error while executing migration %d_%s: ", m.Version, m.Name, err)
+			logger.Error("error while executing migration %d_%s: %s", m.Version, m.Name, err)
 			err = tx.Rollback()
 			if err != nil {
-				logger.Error("error while rolling back migration %d_%s: ", m.Version, m.Name, err)
+				logger.Error("error while rolling back migration %d_%s: %s", m.Version, m.Name, err)
 			}
 			return
 		}
 		err = tx.Commit()
 		if err != nil {
-			logger.Error("error while committing migration %d_%s: ", m.Version, m.Name, err)
+			logger.Error("error while committing migration %d_%s: %s", m.Version, m.Name, err)
 			return
 		}
 
 		err = setLatestMigration(db, &m)
 		if err != nil {
-			logger.Error("error while setting latest migration to %d_%s: ", m.Version, m.Name, err)
+			logger.Error("error while setting latest migration to %d_%s: %s", m.Version, m.Name, err)
 			return
 		}
 
@@ -126,21 +126,21 @@ func RunMigrations(db *sql.DB) (success bool) {
 func setLatestMigration(db *sql.DB, m *Migration) (err error) {
 	tx, err := db.Begin()
 	if err != nil {
-		logger.Error("error while starting transaction for migration %d_%s: ", m.Version, m.Name, err)
+		logger.Error("error while starting transaction for migration %d_%s: %s", m.Version, m.Name, err)
 		return err
 	}
 	defer func() {
 		if err != nil {
-			logger.Error("error while executing migration %d_%s: ", m.Version, m.Name, err)
+			logger.Error("error while executing migration %d_%s: %s", m.Version, m.Name, err)
 			rollErr := tx.Rollback()
 			if rollErr != nil {
-				logger.Error("error while rolling back migration %d_%s: ", m.Version, m.Name, rollErr)
+				logger.Error("error while rolling back migration %d_%s: %s", m.Version, m.Name, rollErr)
 				err = rollErr
 			}
 		} else {
 			err = tx.Commit()
 			if err != nil {
-				logger.Error("error while committing migration %d_%s: ", m.Version, m.Name, err)
+				logger.Error("error while committing migration %d_%s: %s", m.Version, m.Name, err)
 			}
 		}
 	}()
