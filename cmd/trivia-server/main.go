@@ -100,12 +100,13 @@ func main() {
 	// ## services
 	userService := postgres.NewUserService(db)
 	tokenService := postgres.NewTokenService(db)
+	questionService := postgres.NewQuestionService(db)
 	authService := auth.NewService(userService, tokenService)
 
 	// ## handlers
 	authHandler := auth.NewHandler(authService)
 	profileHandler := profile.NewHandler(userService, tokenService)
-	gameHandler := game.NewHandler(tokenService)
+	gameHandler := game.NewHandler(tokenService, questionService)
 	r := http.NewServeMux()
 	r.Handle("/v1/auth/", withLogging(authHandler))
 	r.Handle("/v1/profile/", withLogging(profileHandler))

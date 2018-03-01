@@ -143,7 +143,7 @@ func mg006CreateQuestionsTable(tx *sql.Tx) (err error) {
 			category VARCHAR(128),
 			difficulty INTEGER,
 			prompt TEXT,
-			choices TEXT[],
+			choices jsonb,
 			correct_choice INTEGER,
 			source VARCHAR(128)
 		);

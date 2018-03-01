@@ -30,6 +30,17 @@ type UserCred struct {
 	Password []byte
 }
 
+// Question is a representation of a single trivia question.
+type Question struct {
+	ID            int64
+	Category      string
+	Difficulty    int
+	Prompt        string
+	Choices       []string
+	CorrectChoice int
+	Source        string
+}
+
 // AuthToken is a representation of an authentication used for signing and verifying requests to the API.
 type AuthToken struct {
 	Token     string
@@ -113,6 +124,11 @@ type AuthService interface {
 
 	// LoginAsGuest creates a pair of tokens for a guest account.
 	LoginAsGuest() (*TokenPair, error)
+}
+
+// A QuestionService contains methods for fetching and interacting with questions.
+type QuestionService interface {
+	GetRandomQuestions(count int) ([]Question, error)
 }
 
 // A GameService is a service responsible for coordinating running games,

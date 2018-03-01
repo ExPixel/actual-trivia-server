@@ -35,16 +35,18 @@ type TriviaGamesSet struct {
 	// as keys.
 	games map[string]*TriviaGame
 
-	tokenService trivia.AuthTokenService
+	tokenService    trivia.AuthTokenService
+	questionService trivia.QuestionService
 }
 
 // NewGameSet creates a new set of trivia games.
-func NewGameSet(tokenService trivia.AuthTokenService) *TriviaGamesSet {
+func NewGameSet(tokenService trivia.AuthTokenService, questionService trivia.QuestionService) *TriviaGamesSet {
 	return &TriviaGamesSet{
 		gameFinishedChan: make(chan string, 16),
 		gamesMapLock:     &sync.Mutex{},
 		games:            make(map[string]*TriviaGame),
 		tokenService:     tokenService,
+		questionService:  questionService,
 	}
 }
 
@@ -70,8 +72,10 @@ func (set *TriviaGamesSet) CreateGame(gameID string, gameOptions *TriviaGameOpti
 		MsgPendingCond:      msgPendingCond,
 		options:             gameOptions,
 		tokenService:        set.tokenService,
+		questionService:     set.questionService,
 		gameTickTimerChan:   timerChan,
 		broadcastBuffer:     bytes.Buffer{},
+		currentQuestion:     -1,
 		gameTickTimer: time.AfterFunc(0, func() {
 			timerChan <- true
 			msgPendingCond.Signal()
@@ -97,10 +101,11 @@ type State int
 // the game goroutine.
 const (
 	gameStateWaitForStart = State(iota)
+	gameStateFetchQuestions
 	gameStateCountdownToStart
 	gameStateQuestion
-	gameStateAnswers
-	gameStateProcessing
+	gameStateQuestionCountdown
+	gameStateProcessAnswers
 	gameStateReporting
 )
 
@@ -133,7 +138,8 @@ type TriviaGame struct {
 
 	options *TriviaGameOptions
 
-	tokenService trivia.AuthTokenService
+	tokenService    trivia.AuthTokenService
+	questionService trivia.QuestionService
 
 	// participationClosed is true if the game should no longer accept participation.
 	participationClosed bool
@@ -165,6 +171,9 @@ type TriviaGame struct {
 
 	// broadcastBuffer is a buffer used to encode messages before they are broadcasted to a client.
 	broadcastBuffer bytes.Buffer
+
+	currentQuestion int
+	questions       []trivia.Question
 }
 
 // TriviaGameOptions are a set of options for a single trivia game.
@@ -179,6 +188,12 @@ type TriviaGameOptions struct {
 	// GameStartDelay is the delay before the game starts after the minimum number of participants
 	// has been reached.
 	GameStartDelay time.Duration
+
+	// QuestionsCount is the number of questions that will be presented during this trivia game.
+	QuestionCount int
+
+	// QuestionAnswerDuration is the amount of time that players get to answer each question.
+	QuestionAnswerDuration time.Duration
 }
 
 // TriviaGameClient represents a user that is currently connected to the game.
@@ -224,7 +239,7 @@ func (g *TriviaGame) startLoop() {
 
 connectionLoop:
 	for {
-		logger.Debug("connection loop tick (%d pending)", len(g.pendingClients))
+		// logger.Debug("connection loop tick (%d pending)", len(g.pendingClients))
 
 		executeNextTick := !g.gameTickWaiting
 	selectIOLoop:
@@ -274,8 +289,9 @@ connectionLoop:
 func (g *TriviaGame) addGameClient(conn *Conn, user *trivia.User) {
 	logger.Debug("adding user to game: %s", user.Username) // #TODO remove debug code
 	client := &TriviaGameClient{
-		User: user,
-		Conn: conn,
+		User:            user,
+		Conn:            conn,
+		CurrentQuestion: -1,
 	}
 
 	// #TODO figure out whatever the fuck else goes into making someone a game participant or not.
@@ -290,18 +306,30 @@ func (g *TriviaGame) addGameClient(conn *Conn, user *trivia.User) {
 }
 
 func (g *TriviaGame) gameTick() {
-	logger.Debug("game tick executed")
+	// logger.Debug("game tick executed")
 	switch g.currentState {
 	case gameStateWaitForStart:
 		logger.Debug("checking participants count: %d >= %d", g.participantsCount, g.options.MinParticipants)
 		if g.participantsCount >= g.options.MinParticipants {
 			g.gameCountdownEnd = time.Now().Add(g.options.GameStartDelay)
-			g.currentState = gameStateCountdownToStart
-			g.broadcastMessage(&message.GameStartCountdownTick{Begin: true, SecondsRemaining: int(g.options.GameStartDelay.Seconds())})
+			g.currentState = gameStateFetchQuestions
 			g.tickImm()
 		}
+	case gameStateFetchQuestions:
+		var err error
+		g.questions, err = g.questionService.GetRandomQuestions(g.options.QuestionCount)
+		if err != nil {
+			logger.Error("error occurred while fetching questions for game(%s): %s", g.ID, err)
+			// #TODO I should end the game here.
+		}
+
+		g.broadcastMessage(&message.GameStartCountdownTick{
+			Begin:           true,
+			MillisRemaining: int(g.options.GameStartDelay.Nanoseconds() / int64(time.Millisecond)),
+		})
+		g.currentState = gameStateCountdownToStart
+		g.tickImm()
 	case gameStateCountdownToStart:
-		logger.Debug("countdown...")
 		now := time.Now()
 		if now.After(g.gameCountdownEnd) {
 			// #TODO set the game question here first.
@@ -316,10 +344,62 @@ func (g *TriviaGame) gameTick() {
 			} else {
 				waitDur = time.Second
 			}
-			g.broadcastMessage(&message.GameStartCountdownTick{Begin: true, SecondsRemaining: int(untilEnd.Seconds())})
+			g.broadcastMessage(&message.GameStartCountdownTick{
+				Begin:           true,
+				MillisRemaining: int(untilEnd.Nanoseconds() / int64(time.Millisecond)),
+			})
 			g.tickWait(waitDur)
-			logger.Debug("countdown waiting for %s", waitDur.String())
 		}
+	case gameStateQuestion:
+		g.currentQuestion++
+		if g.currentQuestion >= len(g.questions) {
+			g.currentState = gameStateReporting
+			g.tickImm()
+			break
+		}
+
+		q := g.questions[g.currentQuestion]
+		g.broadcastMessage(&message.SetPrompt{
+			Prompt:     q.Prompt,
+			Choices:    q.Choices,
+			Category:   q.Category,
+			Difficulty: "Unknown", // #TODO right now 0 = Unknown. Figure the rest out later.
+			Index:      g.currentQuestion - 1,
+		})
+		logger.Debug("ask question: %s", q.Prompt)
+		g.gameCountdownEnd = time.Now().Add(g.options.QuestionAnswerDuration)
+		g.broadcastMessage(&message.QuestionCountdownTick{
+			Begin:           true,
+			MillisRemaining: int(g.options.QuestionAnswerDuration.Nanoseconds() / int64(time.Millisecond)),
+		})
+		g.currentState = gameStateQuestionCountdown
+		g.tickImm()
+	case gameStateQuestionCountdown:
+		now := time.Now()
+		if now.After(g.gameCountdownEnd) {
+			g.currentState = gameStateProcessAnswers
+			g.tickImm()
+		} else {
+			var waitDur time.Duration
+			untilEnd := g.gameCountdownEnd.Sub(now)
+			if untilEnd < time.Second {
+				waitDur = untilEnd
+			} else {
+				waitDur = time.Second
+			}
+			g.broadcastMessage(&message.QuestionCountdownTick{
+				Begin:           false,
+				MillisRemaining: int(untilEnd.Nanoseconds() / int64(time.Millisecond)),
+			})
+			g.tickWait(waitDur)
+		}
+	case gameStateProcessAnswers:
+		// #TODO mark answers as right or wrong for each game client and award points here
+		// #NOTE maybe I should have a mode where users are penalized for making incorrect guesses instead of passing.
+		// ^ might not be fun because that would require that everyone wait the full 10 seconds or whatever for a round.
+		// ^ on a separate note I should end the round early if all users have answered the question
+		g.currentState = gameStateQuestion
+		g.tickWait(time.Millisecond) // I forget why I have a wait here, probably not important :|
 	default:
 		logger.Error("reached unexpected game state %d", g.currentState)
 	}

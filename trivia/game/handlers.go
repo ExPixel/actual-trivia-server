@@ -50,17 +50,19 @@ func (h *handler) enterGame(w http.ResponseWriter, r *http.Request) {
 }
 
 // NewHandler creates a new handler for the game endpoint/
-func NewHandler(tokenService trivia.AuthTokenService) http.Handler {
+func NewHandler(tokenService trivia.AuthTokenService, questionService trivia.QuestionService) http.Handler {
 	h := handler{
-		games: NewGameSet(tokenService),
+		games: NewGameSet(tokenService, questionService),
 	}
 
 	// #TODO remove this test code once I have a way to create games from
 	// the client.
 	h.games.CreateGame("test", &TriviaGameOptions{
-		MinParticipants: 1,
-		MaxParticipants: 1,
-		GameStartDelay:  5 * time.Second,
+		MinParticipants:        1,
+		MaxParticipants:        1,
+		GameStartDelay:         5 * time.Second,
+		QuestionCount:          10,
+		QuestionAnswerDuration: 1 * time.Second,
 	})
 
 	r := mux.NewRouter()

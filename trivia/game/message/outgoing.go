@@ -17,6 +17,9 @@ const (
 
 	tagGameStartCountdownTick = OutgoingMessageType("g-start-countdown-tick")
 	tagGameStart              = OutgoingMessageType("g-start")
+
+	tagQuestionCountdownTick = OutgoingMessageType("q-countdown-tick")
+	tagSetPrompt             = OutgoingMessageType("q-set-prompt")
 )
 
 // GameNotFound is an outgoing message used to signal to the client that it has provided an invalid game id.
@@ -34,13 +37,34 @@ type GameStartCountdownTick struct {
 	// Begin is true to mark the start of the countdown.
 	Begin bool `json:"begin"`
 
-	// SecondsRemaining is the number of seconds until the game will begin.
-	SecondsRemaining int `json:"secondsRemaining"`
+	// MillisRemaining is the number of seconds remaining before the game starts.
+	MillisRemaining int `json:"secondsRemaining"`
 }
 
 // GameStart is an outgoing message to let the client know that the game has started and that
 // questions are going to start being delivered.
 type GameStart struct{}
+
+// SetPrompt is an outgoing message that sets the current prompt and choices for the clients.
+type SetPrompt struct {
+	// Index is  the index of this question in the question set for the current trivia game.
+	Index int `json:"index"`
+
+	Prompt     string   `json:"prompt"`
+	Choices    []string `json:"choices"`
+	Category   string   `json:"category"`
+	Difficulty string   `json:"Difficulty"`
+}
+
+// QuestionCountdownTick is an outgoing message used to tell the clients the number of seconds
+// remaining to answer the current question.
+type QuestionCountdownTick struct {
+	// Begin is true if this is the start of the countdown.
+	Begin bool `json:"begin"`
+
+	// MillisRemaining is the number of seconds the client has to answer the questions.
+	MillisRemaining int `json:"secondsRemaining"`
+}
 
 // #NOTE should only define outgoing messages in here
 func getTagForOutgoingPayload(payload interface{}) (OutgoingMessageType, error) {
@@ -55,6 +79,10 @@ func getTagForOutgoingPayload(payload interface{}) (OutgoingMessageType, error) 
 		return tagGameStartCountdownTick, nil
 	case *GameStart:
 		return tagGameStart, nil
+	case *SetPrompt:
+		return tagSetPrompt, nil
+	case *QuestionCountdownTick:
+		return tagQuestionCountdownTick, nil
 	}
 	return tagUnknown, errUnknownOutgoingTag
 }
