@@ -62,7 +62,7 @@ func NewHandler(tokenService trivia.AuthTokenService, questionService trivia.Que
 		MaxParticipants:        1,
 		GameStartDelay:         5 * time.Second,
 		QuestionCount:          10,
-		QuestionAnswerDuration: 1 * time.Second,
+		QuestionAnswerDuration: 5 * time.Second,
 	})
 
 	r := mux.NewRouter()
