@@ -38,7 +38,7 @@ type GameStartCountdownTick struct {
 	Begin bool `json:"begin"`
 
 	// MillisRemaining is the number of seconds remaining before the game starts.
-	MillisRemaining int `json:"secondsRemaining"`
+	MillisRemaining int `json:"millisRemaining"`
 }
 
 // GameStart is an outgoing message to let the client know that the game has started and that
@@ -63,7 +63,7 @@ type QuestionCountdownTick struct {
 	Begin bool `json:"begin"`
 
 	// MillisRemaining is the number of seconds the client has to answer the questions.
-	MillisRemaining int `json:"secondsRemaining"`
+	MillisRemaining int `json:"millisRemaining"`
 }
 
 // #NOTE should only define outgoing messages in here
