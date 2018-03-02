@@ -10,6 +10,9 @@ Server:
     and then we can just move that Conn over the the waiting client if it still exists in the list. The clients list should
     also be periodically pruned for players that have been inactive for too long (30 seconds?). I'll figure this
     all out later probably.
+  ☐ I'm probably sending too many countdown updates to the clients (once every second)
+    The client code can handle some gaps in the countdown so I should probably be sending an update
+    down ever 5 or 3 seconds or something. Would probably be good savings on bandwidth in production.
 
 UI Bugs:
   ✔ Fix the main menu UI so that the menu items list can be scrolled if there is not enough space @done (2018-2-22 09:57:03)
