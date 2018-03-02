@@ -335,7 +335,7 @@ func (g *TriviaGame) gameTick() {
 			// #TODO set the game question here first.
 			g.currentState = gameStateQuestion
 			g.broadcastMessage(&message.GameStart{})
-			g.tickImm()
+			g.tickWait(time.Millisecond * 500) // pad the time a bit to account for ping
 		} else {
 			var waitDur time.Duration
 			untilEnd := g.gameCountdownEnd.Sub(now)
@@ -378,7 +378,7 @@ func (g *TriviaGame) gameTick() {
 		now := time.Now()
 		if now.After(g.gameCountdownEnd) {
 			g.currentState = gameStateProcessAnswers
-			g.tickImm()
+			g.tickWait(time.Millisecond * 500) // pad the time a bit to account for ping
 		} else {
 			var waitDur time.Duration
 			untilEnd := g.gameCountdownEnd.Sub(now)
