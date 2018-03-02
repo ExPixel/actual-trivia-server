@@ -2,3 +2,5 @@
 /config/trivia-config.json
 
 /trivia-log.log
+
+.vscode/
