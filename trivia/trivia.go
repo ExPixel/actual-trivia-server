@@ -9,6 +9,8 @@ import (
 
 // User is a representation of a user profile.
 type User struct {
+	// ID is negative if the user is a guest. This just makes ensuring
+	// uniqueness of clients connecting to the game much easier.
 	ID       int64
 	Username string
 

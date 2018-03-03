@@ -95,7 +95,7 @@ func GetUserForAuthToken(token string, ts trivia.AuthTokenService) (*trivia.User
 
 	if user == nil {
 		user = &trivia.User{
-			ID:       0,
+			ID:       -1 * auth.GuestID.Int64,
 			Username: fmt.Sprintf("#Guest%d", auth.GuestID.Int64),
 			Guest:    true,
 			GuestID:  auth.GuestID,

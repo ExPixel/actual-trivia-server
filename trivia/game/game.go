@@ -66,8 +66,8 @@ func (set *TriviaGamesSet) CreateGame(gameID string, gameOptions *TriviaGameOpti
 		ID:                  gameID,
 		gameFinishedChan:    set.gameFinishedChan,
 		pendingClients:      make([]*Conn, 0),
-		clients:             make([]*TriviaGameClient, 0),
-		disconnectedClients: make([]*TriviaGameClient, 0),
+		clients:             make(map[int64]*TriviaGameClient),
+		disconnectedClients: make(map[int64]*TriviaGameClient),
 		clientConnectedChan: make(chan *Conn, 16),
 		stopGameChan:        make(chan bool, 1),
 		MsgPendingCond:      msgPendingCond,
@@ -124,11 +124,11 @@ type TriviaGame struct {
 
 	// clients are the clients that are currently connected to the game
 	// and answering questions.
-	clients []*TriviaGameClient
+	clients map[int64]*TriviaGameClient
 
 	// disconnectedClients contains clients that have had their websockets
 	// closed and are awaiting reconnection.
-	disconnectedClients []*TriviaGameClient
+	disconnectedClients map[int64]*TriviaGameClient
 
 	// clientConnectedChan is a channel that new connections should be sent to
 	// so that they can be handled in the startConnectionLoop routine.
@@ -311,7 +311,7 @@ func (g *TriviaGame) addGameClient(conn *Conn, user *trivia.User) {
 		g.spectatorsCount++
 	}
 
-	g.clients = append(g.clients, client)
+	g.clients[user.ID] = client
 }
 
 func (g *TriviaGame) gameTick() {
@@ -415,15 +415,10 @@ func (g *TriviaGame) gameTick() {
 }
 
 func (g *TriviaGame) readClientMessages() {
-	for i := 0; i < len(g.clients); i++ {
-		client := g.clients[i]
+	for key, client := range g.clients {
 		if client.closed {
-			// remove the client from the connected clients list
-			g.clients[i] = g.clients[len(g.clients)-1]
-			g.clients = g.clients[:len(g.clients)-1]
-			i--
-			// add the client to the disconnected clients list
-			g.disconnectedClients = append(g.disconnectedClients, client)
+			delete(g.clients, key)
+			g.disconnectedClients[key] = client
 			continue
 		}
 
@@ -443,12 +438,8 @@ func (g *TriviaGame) readClientMessages() {
 				client.Conn = nil
 				logger.Debug("connection to user %s closed", client.User.Username)
 
-				// remove the client from the connected clients list
-				g.clients[i] = g.clients[len(g.clients)-1]
-				g.clients = g.clients[:len(g.clients)-1]
-				i--
-				// add the client to the disconnected clients list
-				g.disconnectedClients = append(g.disconnectedClients, client)
+				delete(g.clients, key)
+				g.disconnectedClients[key] = client
 
 				if client.Participant {
 					g.participantsCount--
@@ -534,26 +525,17 @@ func isSameUser(a *trivia.User, b *trivia.User) bool {
 // if there is one with the same user. It returns true if it was successful or false
 // if no client with the same user was found.
 func (g *TriviaGame) tryReconnectConn(conn *Conn, user *trivia.User) bool {
-	// #TODO I should avoid iterating over the clients all of the time
-	// and instead have a slice dedicated to dropped clients that I work with
-	// instead.
-
-	for i := 0; i < len(g.disconnectedClients); i++ {
-		c := g.disconnectedClients[i]
-		if isSameUser(c.User, user) {
-			c.Conn = conn
-			c.closed = false
-			if c.Participant {
+	for key, client := range g.disconnectedClients {
+		if isSameUser(client.User, user) {
+			client.Conn = conn
+			client.closed = false
+			if client.Participant {
 				g.participantsCount++
 			}
-			logger.Debug("reconnected user: %s", c.User.Username)
+			logger.Debug("reconnected user: %s", client.User.Username)
 
-			// remove the client from the disconnected clients list
-			g.disconnectedClients[i] = g.disconnectedClients[len(g.disconnectedClients)-1]
-			g.disconnectedClients = g.disconnectedClients[:len(g.disconnectedClients)-1]
-			i--
-			// add the client to the connected clients list
-			g.clients = append(g.clients, c)
+			delete(g.disconnectedClients, key)
+			g.clients[key] = client
 			return true
 		}
 	}
