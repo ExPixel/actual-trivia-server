@@ -15,6 +15,16 @@ import (
 	"github.com/expixel/actual-trivia-server/trivia"
 )
 
+// questionAnimationTime is the delay in between sending the question prompt to users
+// and starting the question answer countdown. This time should be used for animating
+// between trivia prompts.
+const questionAnimationTime = time.Second * 2
+
+// pingDelay is the delay used to pad transtitions between certain game
+// states to account for the amount of time it takes messages to get to
+// some users.
+const pingDelay = time.Millisecond * 500
+
 var logger = eplog.NewPrefixLogger("game")
 
 // ErrGameNotFound is returned when trying to use a Game ID that does not exist.
@@ -105,6 +115,7 @@ const (
 	gameStateFetchQuestions
 	gameStateCountdownToStart
 	gameStateQuestion
+	gameStateStartQuestionCountdown
 	gameStateQuestionCountdown
 	gameStateProcessAnswers
 	gameStateReporting
@@ -344,7 +355,7 @@ func (g *TriviaGame) gameTick() {
 			// #TODO set the game question here first.
 			g.currentState = gameStateQuestion
 			g.broadcastMessage(&message.GameStart{})
-			g.tickWait(time.Millisecond * 500) // pad the time a bit to account for ping
+			g.tickWait(pingDelay)
 		} else {
 			var waitDur time.Duration
 			untilEnd := g.gameCountdownEnd.Sub(now)
@@ -376,6 +387,9 @@ func (g *TriviaGame) gameTick() {
 			Index:      g.currentQuestion,
 		})
 		logger.Debug("ask question: %s", q.Prompt)
+		g.currentState = gameStateStartQuestionCountdown
+		g.tickWait(questionAnimationTime) // time allowance for question animation/extra reading time
+	case gameStateStartQuestionCountdown:
 		g.gameCountdownEnd = time.Now().Add(g.options.QuestionAnswerDuration)
 		g.broadcastMessage(&message.QuestionCountdownTick{
 			Begin:           true,
@@ -387,7 +401,7 @@ func (g *TriviaGame) gameTick() {
 		now := time.Now()
 		if now.After(g.gameCountdownEnd) {
 			g.currentState = gameStateProcessAnswers
-			g.tickWait(time.Millisecond * 500) // pad the time a bit to account for ping
+			g.tickWait(pingDelay)
 		} else {
 			var waitDur time.Duration
 			untilEnd := g.gameCountdownEnd.Sub(now)
