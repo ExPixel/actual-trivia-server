@@ -20,6 +20,10 @@ import (
 // between trivia prompts.
 const questionAnimationTime = time.Second * 2
 
+// answerAnimationTime is the delay between revealing an answer, and moving on to the next question.
+// This time should be used for animating the answer reveal and the participants' point totals.
+const answerAnimationTime = time.Second * 5
+
 // pingDelay is the delay used to pad transtitions between certain game
 // states to account for the amount of time it takes messages to get to
 // some users.
@@ -227,11 +231,18 @@ type TriviaGameClient struct {
 	Participant bool
 
 	// CurrentQuestion is the index of the question that this client is currently
-	// answering.
+	// answering. This is -1 if the client has not been posed a trivia prompt.
 	CurrentQuestion int
 
-	// closed is true if the websocket for this client is currently closed.
-	closed bool
+	// SelectedAnswer is the index of the answer that the client selected.
+	// This is -1 if the client has not selected an answer.
+	SelectedAnswer int
+
+	// Points is this client's user's current score.
+	Points int
+
+	// Closed is true if the websocket for this client is currently Closed.
+	Closed bool
 }
 
 // Start starts the trivia game.
@@ -312,6 +323,7 @@ func (g *TriviaGame) addGameClient(conn *Conn, user *trivia.User) {
 		User:            user,
 		Conn:            conn,
 		CurrentQuestion: -1,
+		SelectedAnswer:  -1,
 	}
 
 	// #TODO figure out whatever the fuck else goes into making someone a game participant or not.
@@ -379,6 +391,7 @@ func (g *TriviaGame) gameTick() {
 		}
 
 		q := g.questions[g.currentQuestion]
+		g.prepareClientsForQuestion()
 		g.broadcastMessage(&message.SetPrompt{
 			Prompt:     q.Prompt,
 			Choices:    q.Choices,
@@ -417,20 +430,35 @@ func (g *TriviaGame) gameTick() {
 			g.tickWait(waitDur)
 		}
 	case gameStateProcessAnswers:
-		// #TODO mark answers as right or wrong for each game client and award points here
-		// #NOTE maybe I should have a mode where users are penalized for making incorrect guesses instead of passing.
-		// ^ might not be fun because that would require that everyone wait the full 10 seconds or whatever for a round.
-		// ^ on a separate note I should end the round early if all users have answered the question
+		// #TODO find a way to maybe end the round if all users (participants & spectators) have answered the question
+		// ^ maybe I should only do that if there are no spectators in the game.
+		if g.currentQuestion < len(g.questions) {
+			q := g.questions[g.currentQuestion]
+			g.broadcastMessage(&message.RevealAnswer{QuestionIndex: g.currentQuestion, AnswerIndex: q.CorrectChoice})
+			g.processAnswers()
+			// #TODO send information about the point totals of the game's participants.
+			// ^ First I will have to send information about the participants of the game to begin with.
+		}
 		g.currentState = gameStateQuestion
-		g.tickWait(time.Millisecond) // I forget why I have a wait here, probably not important :|
+		g.tickWait(answerAnimationTime) // I forget why I have a wait here, probably not important :|
 	default:
 		logger.Error("reached unexpected game state %d", g.currentState)
 	}
 }
 
+// processAnswers awards points for correct answers to game clients.
+func (g *TriviaGame) processAnswers() {
+	q := g.questions[g.currentQuestion]
+	for _, client := range g.clients {
+		if client.CurrentQuestion == g.currentQuestion && client.SelectedAnswer == q.CorrectChoice {
+			client.Points += 100
+		}
+	}
+}
+
 func (g *TriviaGame) readClientMessages() {
 	for key, client := range g.clients {
-		if client.closed {
+		if client.Closed {
 			delete(g.clients, key)
 			g.disconnectedClients[key] = client
 			g.afterClientDisconnected(client)
@@ -447,9 +475,9 @@ func (g *TriviaGame) readClientMessages() {
 				break readSingleClientMessages
 			}
 
-			switch msg.(type) {
+			switch msg := msg.(type) {
 			case *message.SocketClosed:
-				client.closed = true
+				client.Closed = true
 				client.Conn = nil
 				logger.Debug("connection to user %s closed", client.User.Username)
 
@@ -458,6 +486,14 @@ func (g *TriviaGame) readClientMessages() {
 				g.afterClientDisconnected(client)
 
 				break readSingleClientMessages
+			case *message.SelectAnswer:
+				if msg.QuestionIndex == client.CurrentQuestion && msg.QuestionIndex == g.currentQuestion {
+					if msg.Index >= 0 && client.SelectedAnswer < 0 {
+						client.SelectedAnswer = msg.Index
+					}
+				}
+			default:
+				logger.Error("unhandled client message of type '%T'", msg)
 			}
 		}
 	}
@@ -472,6 +508,17 @@ func (g *TriviaGame) afterClientDisconnected(client *TriviaGameClient) {
 			// before actually just stopping the game.
 			logger.Debug("too few players, resetting game")
 			g.reset()
+		}
+	}
+}
+
+// prepareClientsForQuestion iterates through all of the connected game clients
+// and prepares them for question answering events.
+func (g *TriviaGame) prepareClientsForQuestion() {
+	for _, client := range g.clients {
+		if !client.Closed {
+			client.CurrentQuestion = g.currentQuestion // so disconnected clients aren't penalized.
+			client.SelectedAnswer = -1                 // reset the selected answer
 		}
 	}
 }
@@ -494,7 +541,7 @@ func (g *TriviaGame) broadcastMessage(msg interface{}) {
 
 	b := g.broadcastBuffer.Bytes()
 	for _, c := range g.clients {
-		if !c.closed {
+		if !c.Closed {
 			c.Conn.WriteBytes(b)
 		}
 	}
@@ -567,7 +614,7 @@ func (g *TriviaGame) tryReconnectConn(conn *Conn, user *trivia.User) bool {
 		if client.Participant {
 			g.participantsCount++
 		}
-		client.closed = false
+		client.Closed = false
 		g.restoreReconnectedClient(client)
 
 		logger.Debug("reconnected user (disconnected): %s", client.User.Username)

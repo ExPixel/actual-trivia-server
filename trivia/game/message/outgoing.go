@@ -20,6 +20,7 @@ const (
 
 	tagQuestionCountdownTick = OutgoingMessageType("q-countdown-tick")
 	tagSetPrompt             = OutgoingMessageType("q-set-prompt")
+	tagRevealAnswer          = OutgoingMessageType("q-reveal-answer")
 )
 
 // GameNotFound is an outgoing message used to signal to the client that it has provided an invalid game id.
@@ -66,6 +67,12 @@ type QuestionCountdownTick struct {
 	MillisRemaining int `json:"millisRemaining"`
 }
 
+// RevealAnswer is an outgoing message that reveals the answer to a question to a client.
+type RevealAnswer struct {
+	QuestionIndex int `json:"questionIndex"`
+	AnswerIndex   int `json:"answerIndex"`
+}
+
 // #NOTE should only define outgoing messages in here
 func getTagForOutgoingPayload(payload interface{}) (OutgoingMessageType, error) {
 	switch payload.(type) {
@@ -83,6 +90,8 @@ func getTagForOutgoingPayload(payload interface{}) (OutgoingMessageType, error) 
 		return tagSetPrompt, nil
 	case *QuestionCountdownTick:
 		return tagQuestionCountdownTick, nil
+	case *RevealAnswer:
+		return tagRevealAnswer, nil
 	}
 	return tagUnknown, errUnknownOutgoingTag
 }

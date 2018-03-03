@@ -3,6 +3,7 @@ package message
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 )
 
 // ErrPayloadExpected is an error returned while reading a client message
@@ -12,8 +13,6 @@ var ErrPayloadExpected = errors.New("payload was expected but was nil")
 // IncomingMessageType is the type of a tag for an incoming message.
 type IncomingMessageType string
 
-var errUnknownIncomingTag = errors.New("trivia: unknown incoming message tag")
-
 // incoming message tags:
 const (
 	// This identifies the client to the server and completes the "handshake".
@@ -21,6 +20,8 @@ const (
 
 	// This is a tag for an internal message that is sent when a socket is closed.
 	tagSocketClose = IncomingMessageType("@socket-closed")
+
+	tagSelectAnswer = IncomingMessageType("select-answer")
 )
 
 // ClientAuth is a message carrying the client auth token.
@@ -31,6 +32,13 @@ type ClientAuth struct {
 // SocketClosed is a message sent when a websocket has been closed either by the client or by the server.
 type SocketClosed struct{}
 
+// SelectAnswer is an incoming message sent when a user has selected an answer.
+type SelectAnswer struct {
+	// QuestionIndex is the index of the question that this answer is for.
+	QuestionIndex int `json:"questionIndex"`
+	Index         int `json:"index"`
+}
+
 // #NOTE should only define incoming messages in here
 func unmarshalIncomingPayload(incoming *incomingJSONMessage) (msg interface{}, err error) {
 	switch incoming.Tag {
@@ -40,8 +48,11 @@ func unmarshalIncomingPayload(incoming *incomingJSONMessage) (msg interface{}, e
 	case tagClientAuth:
 		msg = &ClientAuth{}
 		unmarshalPayloadRequired(incoming.Payload, &msg)
+	case tagSelectAnswer:
+		msg = &SelectAnswer{}
+		unmarshalPayloadRequired(incoming.Payload, &msg)
 	default:
-		return nil, errUnknownIncomingTag
+		return nil, fmt.Errorf("trivia: unknown incoming message tag '%s'", incoming.Tag)
 	}
 	return
 }
