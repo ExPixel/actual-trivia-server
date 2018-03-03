@@ -419,6 +419,7 @@ func (g *TriviaGame) readClientMessages() {
 		if client.closed {
 			delete(g.clients, key)
 			g.disconnectedClients[key] = client
+			g.afterClientDisconnected(client)
 			continue
 		}
 
@@ -440,19 +441,23 @@ func (g *TriviaGame) readClientMessages() {
 
 				delete(g.clients, key)
 				g.disconnectedClients[key] = client
+				g.afterClientDisconnected(client)
 
-				if client.Participant {
-					g.participantsCount--
-					if g.participantsCount < 1 {
-						// #TODO Here I should actually put the game into a gameStateTooFewClients
-						// state or something and wait an amount of time for clients to disconnect
-						// before actually just stopping the game.
-						logger.Debug("too few players, resetting game")
-						g.reset()
-					}
-				}
 				break readSingleClientMessages
 			}
+		}
+	}
+}
+
+func (g *TriviaGame) afterClientDisconnected(client *TriviaGameClient) {
+	if client.Participant {
+		g.participantsCount--
+		if g.participantsCount < 1 {
+			// #TODO Here I should actually put the game into a gameStateTooFewClients
+			// state or something and wait an amount of time for clients to disconnect
+			// before actually just stopping the game.
+			logger.Debug("too few players, resetting game")
+			g.reset()
 		}
 	}
 }
@@ -521,24 +526,40 @@ func isSameUser(a *trivia.User, b *trivia.User) bool {
 	return false
 }
 
+func (g *TriviaGame) restoreReconnectedClient(client *TriviaGameClient) {
+	// #TODO in here I want to deliver all of the necessary state to
+	// for a reconnected client to start playing the game right where they left
+	// off.
+}
+
 // tryReconnectConn reassociates a connection and user with a trivia game client
 // if there is one with the same user. It returns true if it was successful or false
 // if no client with the same user was found.
 func (g *TriviaGame) tryReconnectConn(conn *Conn, user *trivia.User) bool {
-	for key, client := range g.disconnectedClients {
-		if isSameUser(client.User, user) {
-			client.Conn = conn
-			client.closed = false
-			if client.Participant {
-				g.participantsCount++
-			}
-			logger.Debug("reconnected user: %s", client.User.Username)
+	if client, ok := g.clients[user.ID]; ok {
+		// we just jump over to the new connection
+		client.Conn.Close()
+		client.Conn = conn
+		g.restoreReconnectedClient(client)
 
-			delete(g.disconnectedClients, key)
-			g.clients[key] = client
-			return true
-		}
+		logger.Debug("reconnected user (connected): %s", client.User.Username)
+		return true
 	}
+
+	if client, ok := g.disconnectedClients[user.ID]; ok {
+		client.Conn = conn
+		delete(g.disconnectedClients, user.ID)
+		g.clients[user.ID] = client
+		if client.Participant {
+			g.participantsCount++
+		}
+		client.closed = false
+		g.restoreReconnectedClient(client)
+
+		logger.Debug("reconnected user (disconnected): %s", client.User.Username)
+		return true
+	}
+
 	return false
 }
 
