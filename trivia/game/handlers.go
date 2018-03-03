@@ -60,7 +60,7 @@ func NewHandler(tokenService trivia.AuthTokenService, questionService trivia.Que
 	h.games.CreateGame("test", &TriviaGameOptions{
 		MinParticipants:        1,
 		MaxParticipants:        1,
-		GameStartDelay:         5 * time.Second,
+		GameStartDelay:         1 * time.Second,
 		QuestionCount:          10,
 		QuestionAnswerDuration: 5 * time.Second,
 	})

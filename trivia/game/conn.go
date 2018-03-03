@@ -65,6 +65,7 @@ func (c *Conn) StartReadLoop() {
 		if c.recvCond != nil {
 			c.recvCond.Signal()
 		}
+		return
 	}
 
 	eplog.Debug("websocket", "started ws reading loop") // #TODO remove test code

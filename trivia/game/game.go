@@ -67,6 +67,7 @@ func (set *TriviaGamesSet) CreateGame(gameID string, gameOptions *TriviaGameOpti
 		gameFinishedChan:    set.gameFinishedChan,
 		pendingClients:      make([]*Conn, 0),
 		clients:             make([]*TriviaGameClient, 0),
+		disconnectedClients: make([]*TriviaGameClient, 0),
 		clientConnectedChan: make(chan *Conn, 16),
 		stopGameChan:        make(chan bool, 1),
 		MsgPendingCond:      msgPendingCond,
@@ -124,6 +125,10 @@ type TriviaGame struct {
 	// clients are the clients that are currently connected to the game
 	// and answering questions.
 	clients []*TriviaGameClient
+
+	// disconnectedClients contains clients that have had their websockets
+	// closed and are awaiting reconnection.
+	disconnectedClients []*TriviaGameClient
 
 	// clientConnectedChan is a channel that new connections should be sent to
 	// so that they can be handled in the startConnectionLoop routine.
@@ -213,6 +218,9 @@ type TriviaGameClient struct {
 	// CurrentQuestion is the index of the question that this client is currently
 	// answering.
 	CurrentQuestion int
+
+	// closed is true if the websocket for this client is currently closed.
+	closed bool
 }
 
 // Start starts the trivia game.
@@ -268,6 +276,7 @@ connectionLoop:
 		if executeNextTick {
 			g.gameTick()
 		}
+		g.readClientMessages()
 
 		if g.skipLoopPause {
 			g.skipLoopPause = false
@@ -364,7 +373,7 @@ func (g *TriviaGame) gameTick() {
 			Choices:    q.Choices,
 			Category:   q.Category,
 			Difficulty: "Unknown", // #TODO right now 0 = Unknown. Figure the rest out later.
-			Index:      g.currentQuestion - 1,
+			Index:      g.currentQuestion,
 		})
 		logger.Debug("ask question: %s", q.Prompt)
 		g.gameCountdownEnd = time.Now().Add(g.options.QuestionAnswerDuration)
@@ -405,6 +414,58 @@ func (g *TriviaGame) gameTick() {
 	}
 }
 
+func (g *TriviaGame) readClientMessages() {
+	for i := 0; i < len(g.clients); i++ {
+		client := g.clients[i]
+		if client.closed {
+			// remove the client from the connected clients list
+			g.clients[i] = g.clients[len(g.clients)-1]
+			g.clients = g.clients[:len(g.clients)-1]
+			i--
+			// add the client to the disconnected clients list
+			g.disconnectedClients = append(g.disconnectedClients, client)
+			continue
+		}
+
+	readSingleClientMessages:
+		// for now we read at most 16 messages from a client
+		// not sure how else I plan to stop a client from just launching a DoS attack
+		// to stop other clients from sending messages.
+		for climsg := 0; climsg < 16; climsg++ {
+			msg := client.Conn.ReadMessage()
+			if msg == nil {
+				break readSingleClientMessages
+			}
+
+			switch msg.(type) {
+			case *message.SocketClosed:
+				client.closed = true
+				client.Conn = nil
+				logger.Debug("connection to user %s closed", client.User.Username)
+
+				// remove the client from the connected clients list
+				g.clients[i] = g.clients[len(g.clients)-1]
+				g.clients = g.clients[:len(g.clients)-1]
+				i--
+				// add the client to the disconnected clients list
+				g.disconnectedClients = append(g.disconnectedClients, client)
+
+				if client.Participant {
+					g.participantsCount--
+					if g.participantsCount < 1 {
+						// #TODO Here I should actually put the game into a gameStateTooFewClients
+						// state or something and wait an amount of time for clients to disconnect
+						// before actually just stopping the game.
+						logger.Debug("too few players, resetting game")
+						g.reset()
+					}
+				}
+				break readSingleClientMessages
+			}
+		}
+	}
+}
+
 // broadcastMessage sends a single message to all connected trivia game clients.
 func (g *TriviaGame) broadcastMessage(msg interface{}) {
 	wrapped, err := message.WrapMessage(msg)
@@ -423,7 +484,9 @@ func (g *TriviaGame) broadcastMessage(msg interface{}) {
 
 	b := g.broadcastBuffer.Bytes()
 	for _, c := range g.clients {
-		c.Conn.WriteBytes(b)
+		if !c.closed {
+			c.Conn.WriteBytes(b)
+		}
 	}
 }
 
@@ -447,17 +510,73 @@ func (g *TriviaGame) tickWait(dur time.Duration) {
 	g.gameTickTimer.Reset(dur)
 }
 
+// reset sets this game back to its starting state while maintaining its list of
+// connected and pending clients.
+func (g *TriviaGame) reset() {
+	g.currentState = gameStateWaitForStart
+	g.questions = make([]trivia.Question, 0)
+	g.currentQuestion = -1
+	g.MsgPendingCond.Signal()
+	g.tickImm()
+}
+
+func isSameUser(a *trivia.User, b *trivia.User) bool {
+	if a != nil && b != nil {
+		if a.Guest && b.Guest {
+			return (a.GuestID.Valid && b.GuestID.Valid) && (a.GuestID.Int64 == b.GuestID.Int64)
+		}
+		return a.ID == b.ID
+	}
+	return false
+}
+
+// tryReconnectConn reassociates a connection and user with a trivia game client
+// if there is one with the same user. It returns true if it was successful or false
+// if no client with the same user was found.
+func (g *TriviaGame) tryReconnectConn(conn *Conn, user *trivia.User) bool {
+	// #TODO I should avoid iterating over the clients all of the time
+	// and instead have a slice dedicated to dropped clients that I work with
+	// instead.
+
+	for i := 0; i < len(g.disconnectedClients); i++ {
+		c := g.disconnectedClients[i]
+		if isSameUser(c.User, user) {
+			c.Conn = conn
+			c.closed = false
+			if c.Participant {
+				g.participantsCount++
+			}
+			logger.Debug("reconnected user: %s", c.User.Username)
+
+			// remove the client from the disconnected clients list
+			g.disconnectedClients[i] = g.disconnectedClients[len(g.disconnectedClients)-1]
+			g.disconnectedClients = g.disconnectedClients[:len(g.disconnectedClients)-1]
+			i--
+			// add the client to the connected clients list
+			g.clients = append(g.clients, c)
+			return true
+		}
+	}
+	return false
+}
+
 // handlePendingClients handle ClientAuth messages from pending clients and remove them from the waiting list
 func (g *TriviaGame) handlePendingClients() {
 	for i := 0; i < len(g.pendingClients); i++ {
 		c := g.pendingClients[i]
-		if c.IsStopped() {
+		if c.IsStopped() { // #CLEANUP since I'm already checking for socket closed this might not be necessary.
 			// remove pending client (shifts the last pending client to i but that shouldn't be a problem)
 			g.pendingClients[i] = g.pendingClients[len(g.pendingClients)-1]
 			g.pendingClients = g.pendingClients[:len(g.pendingClients)-1]
 			i--
 		} else {
-			if msg, ok := c.ReadMessage().(*message.ClientAuth); ok && msg != nil {
+			msg := c.ReadMessage()
+			if msg == nil {
+				continue
+			}
+
+			switch msg := msg.(type) {
+			case *message.ClientAuth:
 				authTokenString := msg.AuthToken
 				_, user, err := g.tokenService.GetAuthTokenAndUser(authTokenString)
 				if err != nil {
@@ -465,9 +584,16 @@ func (g *TriviaGame) handlePendingClients() {
 				} else if user == nil {
 					c.WriteBytes(bmUserNotFound)
 				} else {
-					g.addGameClient(c, user)
+					if !g.tryReconnectConn(c, user) {
+						g.addGameClient(c, user)
+					}
 				}
 
+				// remove pending client (shifts the last pending client to i but that shouldn't be a problem)
+				g.pendingClients[i] = g.pendingClients[len(g.pendingClients)-1]
+				g.pendingClients = g.pendingClients[:len(g.pendingClients)-1]
+				i--
+			case *message.SocketClosed:
 				// remove pending client (shifts the last pending client to i but that shouldn't be a problem)
 				g.pendingClients[i] = g.pendingClients[len(g.pendingClients)-1]
 				g.pendingClients = g.pendingClients[:len(g.pendingClients)-1]
