@@ -36,17 +36,11 @@ func (h *handler) enterGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	game, ok := h.games.GetGame(gameID)
-	if ok {
-		conn := NewWSConn(rawConn, game.MsgPendingCond)
-		go conn.StartReadLoop()
-		game.AddConn(conn)
-	} else {
-		conn := NewWSConn(rawConn, nil)
-		// we don't bother to start the read loop
-		conn.WriteBytes(bmGameNotFound)
-		conn.Close()
+	if gameID == "quickjoin" {
+		gameID = ""
 	}
+
+	h.games.AddRawConnToGame(rawConn, gameID)
 }
 
 // NewHandler creates a new handler for the game endpoint/
@@ -57,7 +51,15 @@ func NewHandler(tokenService trivia.AuthTokenService, questionService trivia.Que
 
 	// #TODO remove this test code once I have a way to create games from
 	// the client.
-	h.games.CreateGame("test", &TriviaGameOptions{
+	h.games.CreateGame("test-1", &TriviaGameOptions{
+		MinParticipants:        1,
+		MaxParticipants:        1,
+		GameStartDelay:         1 * time.Second,
+		QuestionCount:          10,
+		QuestionAnswerDuration: 5 * time.Second,
+	})
+
+	h.games.CreateGame("test-2", &TriviaGameOptions{
 		MinParticipants:        1,
 		MaxParticipants:        1,
 		GameStartDelay:         1 * time.Second,

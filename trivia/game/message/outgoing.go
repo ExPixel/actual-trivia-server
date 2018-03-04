@@ -27,7 +27,10 @@ const (
 type GameNotFound struct{}
 
 // ClientInfoRequest is an outgoing message used to request that the client send it's authentication token and other information.
-type ClientInfoRequest struct{}
+type ClientInfoRequest struct {
+	// GameID is the ID of the game requesting the client's information.
+	GameID string `json:"gameID"`
+}
 
 // UserNotFound is an outgoing message sent when a user cannot be authenticated with a ClientAuthInfo
 type UserNotFound struct{}

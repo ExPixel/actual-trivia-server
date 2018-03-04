@@ -3,8 +3,6 @@ package game
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -22,7 +20,7 @@ const questionAnimationTime = time.Second * 2
 
 // answerAnimationTime is the delay between revealing an answer, and moving on to the next question.
 // This time should be used for animating the answer reveal and the participants' point totals.
-const answerAnimationTime = time.Second * 5
+const answerAnimationTime = time.Second*2 + time.Millisecond*500
 
 // pingDelay is the delay used to pad transtitions between certain game
 // states to account for the amount of time it takes messages to get to
@@ -31,82 +29,7 @@ const pingDelay = time.Millisecond * 500
 
 var logger = eplog.NewPrefixLogger("game")
 
-// ErrGameNotFound is returned when trying to use a Game ID that does not exist.
-var ErrGameNotFound = errors.New("no game with the given ID was found")
-
 var bmUserNotFound = message.MustEncodeBytes(&message.UserNotFound{})
-var bmClientInfoRequest = message.MustEncodeBytes(&message.ClientInfoRequest{})
-
-// TriviaGamesSet contains a set of trivia games that are currently running.
-type TriviaGamesSet struct {
-	// gameFinishedChan receives IDs of games that have been completed.
-	gameFinishedChan chan string
-
-	// gamesMapLock is a lock on the map of games that are currently running.
-	gamesMapLock *sync.Mutex
-
-	// games is a map of games that are currently running using their game IDs
-	// as keys.
-	games map[string]*TriviaGame
-
-	tokenService    trivia.AuthTokenService
-	questionService trivia.QuestionService
-}
-
-// NewGameSet creates a new set of trivia games.
-func NewGameSet(tokenService trivia.AuthTokenService, questionService trivia.QuestionService) *TriviaGamesSet {
-	return &TriviaGamesSet{
-		gameFinishedChan: make(chan string, 16),
-		gamesMapLock:     &sync.Mutex{},
-		games:            make(map[string]*TriviaGame),
-		tokenService:     tokenService,
-		questionService:  questionService,
-	}
-}
-
-// GetGame gets a game from the game map.
-// #CLEANUP might as well remove this (it used to do something else entirely.)
-func (set *TriviaGamesSet) GetGame(gameID string) (game *TriviaGame, ok bool) {
-	game, ok = set.games[gameID]
-	return
-}
-
-// CreateGame creates a new game with the given ID and options.
-func (set *TriviaGamesSet) CreateGame(gameID string, gameOptions *TriviaGameOptions) error {
-	msgPendingCond := &sync.Cond{L: &sync.Mutex{}}
-	timerChan := make(chan bool, 1)
-
-	game := &TriviaGame{
-		ID:                  gameID,
-		gameFinishedChan:    set.gameFinishedChan,
-		pendingClients:      make([]*Conn, 0),
-		clients:             make(map[int64]*TriviaGameClient),
-		disconnectedClients: make(map[int64]*TriviaGameClient),
-		clientConnectedChan: make(chan *Conn, 16),
-		stopGameChan:        make(chan bool, 1),
-		MsgPendingCond:      msgPendingCond,
-		options:             gameOptions,
-		tokenService:        set.tokenService,
-		questionService:     set.questionService,
-		gameTickTimerChan:   timerChan,
-		broadcastBuffer:     bytes.Buffer{},
-		currentQuestion:     -1,
-		gameTickTimer: time.AfterFunc(0, func() {
-			timerChan <- true
-			msgPendingCond.Signal()
-		}),
-	}
-
-	if _, ok := set.games[gameID]; ok {
-		return fmt.Errorf("cannot create game, the ID %s is already in use", gameID)
-	}
-
-	set.games[gameID] = game
-	game.Start()
-
-	logger.Debug("created game with ID %s", gameID) // #TODO remove debug code.
-	return nil
-}
 
 // State is used to represent the current state of the game.
 type State int
@@ -129,10 +52,8 @@ const (
 type TriviaGame struct {
 	ID string
 
-	// gameFinishedChan is a send only channel that this game's ID is written
-	// to when it has completed and should be removed from the trivia games set
-	// that is it a part of.
-	gameFinishedChan chan<- string
+	// OwningSet is the trivia game set that owns this game.
+	OwningSet *TriviaGamesSet
 
 	// pendingClients are clients that the  server is waiting for authentication messages from.
 	pendingClients []*Conn
@@ -160,9 +81,6 @@ type TriviaGame struct {
 
 	tokenService    trivia.AuthTokenService
 	questionService trivia.QuestionService
-
-	// participationClosed is true if the game should no longer accept participation.
-	participationClosed bool
 
 	participantsCount int
 	spectatorsCount   int
@@ -194,6 +112,11 @@ type TriviaGame struct {
 
 	currentQuestion int
 	questions       []trivia.Question
+
+	// acceptingParticipants is true if the game is still in a state where participants
+	// can be added to the game.
+	acceptingParticipants     bool
+	acceptingParticipantsLock *sync.Mutex
 }
 
 // TriviaGameOptions are a set of options for a single trivia game.
@@ -215,6 +138,8 @@ type TriviaGameOptions struct {
 	// QuestionAnswerDuration is the amount of time that players get to answer each question.
 	QuestionAnswerDuration time.Duration
 }
+
+// url('/sample-path
 
 // TriviaGameClient represents a user that is currently connected to the game.
 type TriviaGameClient struct {
@@ -278,7 +203,9 @@ connectionLoop:
 			case conn := <-g.clientConnectedChan:
 				g.pendingClients = append(g.pendingClients, conn)
 				logger.Debug("client %s added to pending clients", conn.wsConn.RemoteAddr()) // #TODO remove debug code
-				conn.WriteBytes(bmClientInfoRequest)
+
+				// #TODO I can move this generic client info request inside of the game struct.
+				conn.WriteBytes(message.MustEncodeBytes(&message.ClientInfoRequest{GameID: g.ID}))
 			case val, ok := <-g.stopGameChan:
 				stopGameChanClosed = !ok
 				if val || !ok {
@@ -327,14 +254,35 @@ func (g *TriviaGame) addGameClient(conn *Conn, user *trivia.User) {
 	}
 
 	// #TODO figure out whatever the fuck else goes into making someone a game participant or not.
-	if !g.participationClosed && len(g.clients) < g.options.MaxParticipants {
+	if !g.isParticipationClosed() {
 		client.Participant = true
 		g.participantsCount++
+		g.updateSetParticipation()
 	} else {
 		g.spectatorsCount++
 	}
 
 	g.clients[user.ID] = client
+}
+
+func (g *TriviaGame) isParticipationClosed() bool {
+	if g.currentState != gameStateWaitForStart &&
+		g.currentState != gameStateFetchQuestions &&
+		g.currentState != gameStateCountdownToStart {
+		return true
+	}
+
+	if g.participantsCount >= g.options.MaxParticipants {
+		return true
+	}
+
+	return false
+}
+
+func (g *TriviaGame) updateSetParticipation() {
+	g.OwningSet.WithSetGame(g.ID, func(set *TriviaGameSetGame) {
+		set.ParticipationClosed = g.isParticipationClosed()
+	})
 }
 
 func (g *TriviaGame) gameTick() {
@@ -366,6 +314,7 @@ func (g *TriviaGame) gameTick() {
 		if now.After(g.gameCountdownEnd) {
 			// #TODO set the game question here first.
 			g.currentState = gameStateQuestion
+			g.updateSetParticipation()
 			g.broadcastMessage(&message.GameStart{})
 			g.tickWait(pingDelay)
 		} else {
@@ -507,7 +456,7 @@ func (g *TriviaGame) afterClientDisconnected(client *TriviaGameClient) {
 			// state or something and wait an amount of time for clients to disconnect
 			// before actually just stopping the game.
 			logger.Debug("too few players, resetting game")
-			g.reset()
+			g.reset(true)
 		}
 	}
 }
@@ -518,8 +467,8 @@ func (g *TriviaGame) prepareClientsForQuestion() {
 	for _, client := range g.clients {
 		if !client.Closed {
 			client.CurrentQuestion = g.currentQuestion // so disconnected clients aren't penalized.
-			client.SelectedAnswer = -1                 // reset the selected answer
 		}
+		client.SelectedAnswer = -1 // reset the selected answer
 	}
 }
 
@@ -569,10 +518,25 @@ func (g *TriviaGame) tickWait(dur time.Duration) {
 
 // reset sets this game back to its starting state while maintaining its list of
 // connected and pending clients.
-func (g *TriviaGame) reset() {
+func (g *TriviaGame) reset(removeClients bool) {
 	g.currentState = gameStateWaitForStart
 	g.questions = make([]trivia.Question, 0)
 	g.currentQuestion = -1
+
+	if removeClients {
+		g.participantsCount = 0
+		for _, client := range g.clients {
+			if !client.Closed {
+				client.Conn.Close()
+			}
+		}
+		g.clients = make(map[int64]*TriviaGameClient)
+		g.disconnectedClients = make(map[int64]*TriviaGameClient)
+		g.participantsCount = 0
+		g.spectatorsCount = 0
+	}
+	g.updateSetParticipation()
+
 	g.MsgPendingCond.Signal()
 	g.tickImm()
 }
