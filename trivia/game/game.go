@@ -405,11 +405,17 @@ func (g *TriviaGame) processAnswers() {
 	}
 }
 
+func (g *TriviaGame) isGameInProgress() bool {
+	return g.currentState >= gameStateQuestion
+}
+
 func (g *TriviaGame) readClientMessages() {
 	for key, client := range g.clients {
 		if client.Closed {
 			delete(g.clients, key)
-			g.disconnectedClients[key] = client
+			if g.isGameInProgress() {
+				g.disconnectedClients[key] = client
+			}
 			g.afterClientDisconnected(client)
 			continue
 		}
@@ -432,7 +438,9 @@ func (g *TriviaGame) readClientMessages() {
 					logger.Debug("connection to user %s closed", client.User.Username)
 
 					delete(g.clients, key)
-					g.disconnectedClients[key] = client
+					if g.isGameInProgress() {
+						g.disconnectedClients[key] = client
+					}
 					g.afterClientDisconnected(client)
 
 					break readSingleClientMessages
@@ -453,12 +461,18 @@ func (g *TriviaGame) readClientMessages() {
 func (g *TriviaGame) afterClientDisconnected(client *TriviaGameClient) {
 	if client.Participant {
 		g.participantsCount--
-		if g.participantsCount < 1 {
-			// #TODO Here I should actually put the game into a gameStateTooFewClients
-			// state or something and wait an amount of time for clients to disconnect
-			// before actually just stopping the game.
-			logger.Debug("too few players, resetting game")
-			g.reset(true)
+		logger.Debug("current state: %d (%t)", g.currentState, g.isGameInProgress())
+		if !g.isGameInProgress() && g.participantsCount < g.options.MinParticipants {
+			logger.Debug("too few players before game started, resetting.") // remove debug code
+			g.reset(false)
+		} else {
+			if g.participantsCount < 1 {
+				// #TODO Here I should actually put the game into a gameStateTooFewClients
+				// state or something and wait an amount of time for clients to disconnect
+				// before actually just stopping the game.
+				logger.Debug("too few players, resetting game") // remove debug code
+				g.reset(true)
+			}
 		}
 	}
 }
@@ -615,9 +629,6 @@ func (g *TriviaGame) tryReconnectConn(conn *Conn, user *trivia.User) bool {
 		client.Conn = conn
 		delete(g.disconnectedClients, user.ID)
 		g.clients[user.ID] = client
-		if client.Participant {
-			g.participantsCount++
-		}
 		client.Closed = false
 		g.restoreReconnectedClient(client)
 
