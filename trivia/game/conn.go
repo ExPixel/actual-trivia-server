@@ -61,7 +61,7 @@ func (c *Conn) StartReadLoop() {
 
 	if atomic.LoadInt32(&c.stopped) != 0 {
 		// we send our own synthetic close message from the end of the read loop.
-		c.recvChan <- &message.SocketClosed{}
+		c.recvChan <- message.CreateSocketClosed(c.wsConn)
 		if c.recvCond != nil {
 			c.recvCond.Signal()
 		}
@@ -114,7 +114,7 @@ func (c *Conn) StartReadLoop() {
 	eplog.Debug("websocket", "stopped ws reading loop") // #TODO remove test code
 
 	// we send our own synthetic close message from the end of the read loop.
-	c.recvChan <- &message.SocketClosed{}
+	c.recvChan <- message.CreateSocketClosed(c.wsConn)
 	if c.recvCond != nil {
 		c.recvCond.Signal()
 	}

@@ -170,28 +170,6 @@ type TriviaGameClient struct {
 	Closed bool
 }
 
-func (c *TriviaGameClient) sendMessage(msg interface{}) {
-	if c.Closed {
-		return
-	}
-
-	wrapped, err := message.WrapMessage(msg)
-	if err != nil {
-		logger.Error("error wrapping message: %s", err.Error())
-		return
-	}
-
-	buffer := bytes.Buffer{}
-	encoder := json.NewEncoder(&buffer)
-	err = encoder.Encode(wrapped)
-	if err != nil {
-		logger.Error("error encoding message: %s", err.Error())
-		return
-	}
-
-	c.Conn.WriteBytes(buffer.Bytes())
-}
-
 // Start starts the trivia game.
 func (g *TriviaGame) Start() {
 	go g.startLoop()
@@ -448,15 +426,17 @@ func (g *TriviaGame) readClientMessages() {
 
 			switch msg := msg.(type) {
 			case *message.SocketClosed:
-				client.Closed = true
-				client.Conn = nil
-				logger.Debug("connection to user %s closed", client.User.Username)
+				if message.IsSocketClosed(msg, client.Conn.wsConn) {
+					client.Closed = true
+					client.Conn = nil
+					logger.Debug("connection to user %s closed", client.User.Username)
 
-				delete(g.clients, key)
-				g.disconnectedClients[key] = client
-				g.afterClientDisconnected(client)
+					delete(g.clients, key)
+					g.disconnectedClients[key] = client
+					g.afterClientDisconnected(client)
 
-				break readSingleClientMessages
+					break readSingleClientMessages
+				}
 			case *message.SelectAnswer:
 				if msg.QuestionIndex == client.CurrentQuestion && msg.QuestionIndex == g.currentQuestion {
 					if msg.Index >= 0 && client.SelectedAnswer < 0 {
@@ -518,6 +498,29 @@ func (g *TriviaGame) broadcastMessage(msg interface{}) {
 	}
 }
 
+// sendMessage sends a single message to a single trivia game client.
+func (g *TriviaGame) sendMessage(client *TriviaGameClient, msg interface{}) {
+	if client.Closed {
+		return
+	}
+
+	wrapped, err := message.WrapMessage(msg)
+	if err != nil {
+		logger.Error("error wrapping message: %s", err.Error())
+		return
+	}
+
+	g.broadcastBuffer.Reset()
+	encoder := json.NewEncoder(&g.broadcastBuffer)
+	err = encoder.Encode(wrapped)
+	if err != nil {
+		logger.Error("error encoding message: %s", err.Error())
+		return
+	}
+
+	client.Conn.WriteBytes(g.broadcastBuffer.Bytes())
+}
+
 // tickImm causes the next tick of the game to be executed immediately.
 // Use this when you don't want the game loop to pause after a tick.
 func (g *TriviaGame) tickImm() {
@@ -574,16 +577,23 @@ func isSameUser(a *trivia.User, b *trivia.User) bool {
 }
 
 func (g *TriviaGame) restoreReconnectedClient(client *TriviaGameClient) {
-	// #TODO in here I want to deliver all of the necessary state to
-	// for a reconnected client to start playing the game right where they left
-	// off.
+	g.sendMessage(client, &message.GameStart{}) // so that the client switches screens immediately.
 	switch g.currentState {
 	case gameStateQuestion:
 		fallthrough
 	case gameStateStartQuestionCountdown:
 		fallthrough
 	case gameStateQuestionCountdown:
-
+		if g.currentQuestion < len(g.questions) {
+			q := g.questions[g.currentQuestion]
+			g.sendMessage(client, &message.SetPrompt{
+				Prompt:     q.Prompt,
+				Choices:    q.Choices,
+				Category:   q.Category,
+				Difficulty: "Unknown",
+				Index:      g.currentQuestion,
+			})
+		}
 	}
 }
 
@@ -596,7 +606,6 @@ func (g *TriviaGame) tryReconnectConn(conn *Conn, user *trivia.User) bool {
 		client.Conn.Close()
 		client.Conn = conn
 		g.restoreReconnectedClient(client)
-		// ^ this is dumb I should create a new game client and add that to the clients list.
 
 		logger.Debug("reconnected user (connected): %s", client.User.Username)
 		return true

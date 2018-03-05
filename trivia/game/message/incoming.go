@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/gorilla/websocket"
 )
 
 // ErrPayloadExpected is an error returned while reading a client message
@@ -30,7 +32,20 @@ type ClientAuth struct {
 }
 
 // SocketClosed is a message sent when a websocket has been closed either by the client or by the server.
-type SocketClosed struct{}
+type SocketClosed struct {
+	connPtr *websocket.Conn
+}
+
+// CreateSocketClosed creates a new socket closed event for a web socket.
+func CreateSocketClosed(sock *websocket.Conn) *SocketClosed {
+	return &SocketClosed{connPtr: sock}
+}
+
+// IsSocketClosed returns true if the given websocket is the one that a socket closed
+// message is in reference to.
+func IsSocketClosed(msg *SocketClosed, sock *websocket.Conn) bool {
+	return msg.connPtr == sock
+}
 
 // SelectAnswer is an incoming message sent when a user has selected an answer.
 type SelectAnswer struct {
