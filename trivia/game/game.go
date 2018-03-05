@@ -170,6 +170,28 @@ type TriviaGameClient struct {
 	Closed bool
 }
 
+func (c *TriviaGameClient) sendMessage(msg interface{}) {
+	if c.Closed {
+		return
+	}
+
+	wrapped, err := message.WrapMessage(msg)
+	if err != nil {
+		logger.Error("error wrapping message: %s", err.Error())
+		return
+	}
+
+	buffer := bytes.Buffer{}
+	encoder := json.NewEncoder(&buffer)
+	err = encoder.Encode(wrapped)
+	if err != nil {
+		logger.Error("error encoding message: %s", err.Error())
+		return
+	}
+
+	c.Conn.WriteBytes(buffer.Bytes())
+}
+
 // Start starts the trivia game.
 func (g *TriviaGame) Start() {
 	go g.startLoop()
@@ -555,6 +577,14 @@ func (g *TriviaGame) restoreReconnectedClient(client *TriviaGameClient) {
 	// #TODO in here I want to deliver all of the necessary state to
 	// for a reconnected client to start playing the game right where they left
 	// off.
+	switch g.currentState {
+	case gameStateQuestion:
+		fallthrough
+	case gameStateStartQuestionCountdown:
+		fallthrough
+	case gameStateQuestionCountdown:
+
+	}
 }
 
 // tryReconnectConn reassociates a connection and user with a trivia game client
@@ -566,6 +596,7 @@ func (g *TriviaGame) tryReconnectConn(conn *Conn, user *trivia.User) bool {
 		client.Conn.Close()
 		client.Conn = conn
 		g.restoreReconnectedClient(client)
+		// ^ this is dumb I should create a new game client and add that to the clients list.
 
 		logger.Debug("reconnected user (connected): %s", client.User.Username)
 		return true
