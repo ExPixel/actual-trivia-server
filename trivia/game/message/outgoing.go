@@ -21,6 +21,10 @@ const (
 	tagQuestionCountdownTick = OutgoingMessageType("q-countdown-tick")
 	tagSetPrompt             = OutgoingMessageType("q-set-prompt")
 	tagRevealAnswer          = OutgoingMessageType("q-reveal-answer")
+
+	tagAddParticipant    = OutgoingMessageType("p-list-add")
+	tagRemoveParticipant = OutgoingMessageType("p-list-remove")
+	tagSetParticipant    = OutgoingMessageType("p-list-set")
 )
 
 // GameNotFound is an outgoing message used to signal to the client that it has provided an invalid game id.
@@ -76,6 +80,27 @@ type RevealAnswer struct {
 	AnswerIndex   int `json:"answerIndex"`
 }
 
+// AddParticipant is an outgoing message that adds a participant to a client's list.
+type AddParticipant struct {
+	Participant Participant `json:"participant"`
+}
+
+// RemoveParticipant is an outgoing message that removes a participant from a client's list.
+type RemoveParticipant struct {
+	Participant Participant `json:"participant"`
+}
+
+// SetParticipant is an outgoing message that sets the state of a participant in the client's list.
+type SetParticipant struct {
+	Participant Participant `json:"participant"`
+}
+
+// Participant is a single game participant that is a part of the participant list.
+type Participant struct {
+	Username string `json:"username"`
+	Score    int    `json:"score"`
+}
+
 // #NOTE should only define outgoing messages in here
 func getTagForOutgoingPayload(payload interface{}) (OutgoingMessageType, error) {
 	switch payload.(type) {
@@ -95,6 +120,12 @@ func getTagForOutgoingPayload(payload interface{}) (OutgoingMessageType, error) 
 		return tagQuestionCountdownTick, nil
 	case *RevealAnswer:
 		return tagRevealAnswer, nil
+	case *AddParticipant:
+		return tagAddParticipant, nil
+	case *RemoveParticipant:
+		return tagRemoveParticipant, nil
+	case *SetParticipant:
+		return tagSetParticipant, nil
 	}
 	return tagUnknown, errUnknownOutgoingTag
 }
