@@ -3,8 +3,10 @@ package game
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/expixel/actual-trivia-server/trivia/game/message"
 
@@ -18,6 +20,10 @@ import (
 // between trivia prompts.
 const questionAnimationTime = time.Second * 2
 
+// wordsPerSecond is used to calculate how much time we should wait after displaying
+// each question. It is based on the average reading speed which is about 200 words per minute (3 1/3 wps).
+const wordsPerSecond = 4
+
 // answerAnimationTime is the delay between revealing an answer, and moving on to the next question.
 // This time should be used for animating the answer reveal and the participants' point totals.
 const answerAnimationTime = time.Second*2 + time.Millisecond*500
@@ -25,7 +31,7 @@ const answerAnimationTime = time.Second*2 + time.Millisecond*500
 // pingDelay is the delay used to pad transtitions between certain game
 // states to account for the amount of time it takes messages to get to
 // some users.
-const pingDelay = time.Millisecond * 500
+const pingDelay = time.Second * 1
 
 var logger = eplog.NewPrefixLogger("game")
 
@@ -113,6 +119,10 @@ type TriviaGame struct {
 	currentQuestion int
 	questions       []trivia.Question
 
+	// participantsList is a list of participants list that also doubles as
+	// the outgoing message that is sent to update the participants list for clients.
+	participantsList message.ParticipantsList
+
 	// acceptingParticipants is true if the game is still in a state where participants
 	// can be added to the game.
 	acceptingParticipants     bool
@@ -163,8 +173,8 @@ type TriviaGameClient struct {
 	// This is -1 if the client has not selected an answer.
 	SelectedAnswer int
 
-	// Points is this client's user's current score.
-	Points int
+	// Score is this client's user's current score.
+	Score int
 
 	// Closed is true if the websocket for this client is currently Closed.
 	Closed bool
@@ -258,17 +268,19 @@ func (g *TriviaGame) addGameClient(conn *Conn, user *trivia.User) {
 		client.Participant = true
 		g.participantsCount++
 		g.updateSetParticipation()
+		g.addParticipantToList(client)
+		g.clients[user.ID] = client
+		g.broadcastMessage(&g.participantsList)
 	} else {
 		g.spectatorsCount++
+		g.clients[user.ID] = client
+		g.sendMessage(client, &g.participantsList)
+		g.restoreReconnectedClient(client) // #TODO I should probably rename restoreReconnected to something else but I'm bad at names.
 	}
-
-	g.clients[user.ID] = client
 }
 
 func (g *TriviaGame) isParticipationClosed() bool {
-	if g.currentState != gameStateWaitForStart &&
-		g.currentState != gameStateFetchQuestions &&
-		g.currentState != gameStateCountdownToStart {
+	if g.currentState >= gameStateQuestion {
 		return true
 	}
 
@@ -282,6 +294,8 @@ func (g *TriviaGame) isParticipationClosed() bool {
 func (g *TriviaGame) updateSetParticipation() {
 	g.OwningSet.WithSetGame(g.ID, func(set *TriviaGameSetGame) {
 		set.ParticipationClosed = g.isParticipationClosed()
+		set.ParticipantsCount = g.participantsCount
+		set.MaxParticipants = g.options.MaxParticipants
 	})
 }
 
@@ -316,7 +330,7 @@ func (g *TriviaGame) gameTick() {
 			g.currentState = gameStateQuestion
 			g.updateSetParticipation()
 			g.broadcastMessage(&message.GameStart{})
-			g.tickWait(pingDelay)
+			g.tickWait(500 * time.Millisecond)
 		} else {
 			var waitDur time.Duration
 			untilEnd := g.gameCountdownEnd.Sub(now)
@@ -348,9 +362,20 @@ func (g *TriviaGame) gameTick() {
 			Difficulty: "Unknown", // #TODO right now 0 = Unknown. Figure the rest out later.
 			Index:      g.currentQuestion,
 		})
-		logger.Debug("ask question: %s", q.Prompt)
 		g.currentState = gameStateStartQuestionCountdown
-		g.tickWait(questionAnimationTime) // time allowance for question animation/extra reading time
+
+		// extra time is time for reading after the animations
+		wordsInPrompt := countWords(q.Prompt)
+		for _, choice := range q.Choices {
+			wordsInPrompt += countWords(choice)
+		}
+
+		extraTime := (time.Duration(wordsInPrompt) * time.Second / time.Duration(wordsPerSecond))
+		if extraTime > time.Second*5 {
+			extraTime = time.Second * 8
+		}
+		logger.Debug("ask question (%d -- %s): %s", wordsInPrompt, extraTime.String(), q.Prompt)
+		g.tickWait(questionAnimationTime + extraTime) // time allowance for question animation/extra reading time
 	case gameStateStartQuestionCountdown:
 		g.gameCountdownEnd = time.Now().Add(g.options.QuestionAnswerDuration)
 		g.broadcastMessage(&message.QuestionCountdownTick{
@@ -372,10 +397,10 @@ func (g *TriviaGame) gameTick() {
 			} else {
 				waitDur = time.Second
 			}
-			g.broadcastMessage(&message.QuestionCountdownTick{
-				Begin:           false,
-				MillisRemaining: int(untilEnd.Nanoseconds() / int64(time.Millisecond)),
-			})
+			// g.broadcastMessage(&message.QuestionCountdownTick{
+			// 	Begin:           false,
+			// 	MillisRemaining: int(untilEnd.Nanoseconds() / int64(time.Millisecond)),
+			// })
 			g.tickWait(waitDur)
 		}
 	case gameStateProcessAnswers:
@@ -400,9 +425,16 @@ func (g *TriviaGame) processAnswers() {
 	q := g.questions[g.currentQuestion]
 	for _, client := range g.clients {
 		if client.CurrentQuestion == g.currentQuestion && client.SelectedAnswer == q.CorrectChoice {
-			client.Points += 100
+			client.Score += 100
+		}
+
+		if client.Participant {
+			if p := g.findParticipantInList(client); p != nil {
+				p.Score = client.Score
+			}
 		}
 	}
+	g.broadcastMessage(&g.participantsList)
 }
 
 func (g *TriviaGame) isGameInProgress() bool {
@@ -459,13 +491,26 @@ func (g *TriviaGame) readClientMessages() {
 }
 
 func (g *TriviaGame) afterClientDisconnected(client *TriviaGameClient) {
+	client.SelectedAnswer = -1
 	if client.Participant {
 		g.participantsCount--
-		logger.Debug("current state: %d (%t)", g.currentState, g.isGameInProgress())
 		if !g.isGameInProgress() && g.participantsCount < g.options.MinParticipants {
 			logger.Debug("too few players before game started, resetting.") // remove debug code
+			g.removeParticipantFromList(client)
 			g.reset(false)
 		} else {
+			// If the game is in progress we just mark the participant as disconnected
+			// so that they can just reconnect later and continue wherever they left off.
+			if g.isGameInProgress() {
+				p := g.findParticipantInList(client)
+				if p != nil {
+					p.Disconnected = true
+					g.broadcastMessage(&message.SetParticipant{Participant: *p})
+				}
+			} else {
+				g.removeParticipantFromList(client)
+			}
+
 			if g.participantsCount < 1 {
 				// #TODO Here I should actually put the game into a gameStateTooFewClients
 				// state or something and wait an amount of time for clients to disconnect
@@ -474,6 +519,8 @@ func (g *TriviaGame) afterClientDisconnected(client *TriviaGameClient) {
 				g.reset(true)
 			}
 		}
+	} else {
+		g.spectatorsCount--
 	}
 }
 
@@ -573,6 +620,7 @@ func (g *TriviaGame) reset(removeClients bool) {
 		g.disconnectedClients = make(map[int64]*TriviaGameClient)
 		g.participantsCount = 0
 		g.spectatorsCount = 0
+		g.participantsList = message.ParticipantsList{Participants: make([]message.Participant, 0)}
 	}
 	g.updateSetParticipation()
 
@@ -591,24 +639,42 @@ func isSameUser(a *trivia.User, b *trivia.User) bool {
 }
 
 func (g *TriviaGame) restoreReconnectedClient(client *TriviaGameClient) {
-	g.sendMessage(client, &message.GameStart{}) // so that the client switches screens immediately.
-	switch g.currentState {
-	case gameStateQuestion:
-		fallthrough
-	case gameStateStartQuestionCountdown:
-		fallthrough
-	case gameStateQuestionCountdown:
+	multi := message.Multi{}
+
+	if g.currentState > gameStateCountdownToStart {
+		multi.Append(&message.GameStart{})
+	}
+
+	if g.currentState == gameStateCountdownToStart {
+		untilEnd := g.gameCountdownEnd.Sub(time.Now())
+		multi.Append(&message.QuestionCountdownTick{
+			Begin:           false,
+			MillisRemaining: int(untilEnd.Nanoseconds() / int64(time.Millisecond)),
+		})
+	}
+
+	if g.currentState == gameStateQuestion || g.currentState == gameStateStartQuestionCountdown || g.currentState == gameStateQuestionCountdown {
 		if g.currentQuestion < len(g.questions) {
 			q := g.questions[g.currentQuestion]
-			g.sendMessage(client, &message.SetPrompt{
+			multi.Append(&message.SetPrompt{
 				Prompt:     q.Prompt,
 				Choices:    q.Choices,
 				Category:   q.Category,
 				Difficulty: "Unknown",
 				Index:      g.currentQuestion,
 			})
+
+			if g.currentState == gameStateStartQuestionCountdown || g.currentState == gameStateQuestionCountdown {
+				untilEnd := g.gameCountdownEnd.Sub(time.Now())
+				multi.Append(&message.QuestionCountdownTick{
+					Begin:           false,
+					MillisRemaining: int(untilEnd.Nanoseconds() / int64(time.Millisecond)),
+				})
+			}
 		}
 	}
+
+	g.sendMessage(client, &multi)
 }
 
 // tryReconnectConn reassociates a connection and user with a trivia game client
@@ -680,4 +746,46 @@ func (g *TriviaGame) handlePendingClients() {
 			}
 		}
 	}
+}
+
+func (g *TriviaGame) addParticipantToList(client *TriviaGameClient) {
+	p := message.Participant{
+		Username: client.User.Username,
+		Score:    0,
+	}
+	g.participantsList.Participants = append(g.participantsList.Participants, p)
+}
+
+func (g *TriviaGame) findParticipantInList(client *TriviaGameClient) *message.Participant {
+	for idx := 0; idx < len(g.participantsList.Participants); idx++ {
+		if strings.EqualFold(client.User.Username, g.participantsList.Participants[idx].Username) {
+			return &g.participantsList.Participants[idx]
+		}
+	}
+	return nil
+}
+
+func (g *TriviaGame) removeParticipantFromList(client *TriviaGameClient) {
+	for idx := 0; idx < len(g.participantsList.Participants); idx++ {
+		if strings.EqualFold(client.User.Username, g.participantsList.Participants[idx].Username) {
+			// #NOTE this seems inefficient but I'll leave it for now.
+			g.participantsList.Participants = append(g.participantsList.Participants[:idx], g.participantsList.Participants[idx+1:]...)
+			break
+		}
+	}
+}
+
+// countWords counds the number of words in a string.
+func countWords(s string) int {
+	words := 0
+	inWord := false
+	for _, c := range s {
+		if unicode.IsSpace(c) {
+			inWord = false
+		} else if !inWord {
+			words++
+			inWord = true
+		}
+	}
+	return words
 }

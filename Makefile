@@ -10,6 +10,9 @@ test: install
 run: install
 	${GOPATH}/bin/trivia-server -level debug
 
+debug: install
+	dlv debug github.com/expixel/actual-trivia-server/cmd/trivia-server
+
 # #FIXME Maybe I should be getting other things things in here too like vendor dependencies
 # Or maybe I can add another target like make vdeps or something to do that instead.
 deps:

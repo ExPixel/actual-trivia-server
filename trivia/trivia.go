@@ -2,6 +2,7 @@ package trivia
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/expixel/actual-trivia-server/trivia/null"
@@ -170,3 +171,17 @@ var ErrInvalidToken = errors.New("malformed token")
 // ErrNoAuthInfo is returned when a function searching for an authorization header, cookie, ect. cannot find
 // one in a given request.
 var ErrNoAuthInfo = errors.New("no authentication information found")
+
+// NewGuestUser creates a new guest user given a gest ID.
+func NewGuestUser(guestID null.Int64) *User {
+	if !guestID.Valid {
+		panic("cannot create guest user with null guest ID.")
+	}
+
+	return &User{
+		ID:       -1 * guestID.Int64,
+		Username: fmt.Sprintf("#Guest%d", guestID.Int64),
+		Guest:    true,
+		GuestID:  guestID,
+	}
+}

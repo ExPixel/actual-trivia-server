@@ -92,7 +92,10 @@ func (s *tokenService) GetAuthTokenAndUser(token string) (*trivia.AuthToken, *tr
 
 	authToken.Token = token
 	if !nullUserID.Valid || !nullUsername.Valid {
-		return authToken, nil, nil
+		if authToken.GuestID.Valid {
+			return authToken, trivia.NewGuestUser(authToken.GuestID), nil
+		}
+		return authToken, nil, trivia.ErrUserNotFound
 	}
 	user := &trivia.User{ID: nullUserID.Int64, Username: nullUsername.String}
 

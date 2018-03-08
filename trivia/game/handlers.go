@@ -53,18 +53,18 @@ func NewHandler(tokenService trivia.AuthTokenService, questionService trivia.Que
 	// the client.
 	h.games.CreateGame("test-1", &TriviaGameOptions{
 		MinParticipants:        1,
-		MaxParticipants:        1,
-		GameStartDelay:         1 * time.Second,
+		MaxParticipants:        2,
+		GameStartDelay:         10 * time.Second,
 		QuestionCount:          10,
-		QuestionAnswerDuration: 5 * time.Second,
+		QuestionAnswerDuration: 10 * time.Second,
 	})
 
 	h.games.CreateGame("test-2", &TriviaGameOptions{
 		MinParticipants:        1,
 		MaxParticipants:        1,
-		GameStartDelay:         1 * time.Second,
+		GameStartDelay:         10 * time.Second,
 		QuestionCount:          10,
-		QuestionAnswerDuration: 5 * time.Second,
+		QuestionAnswerDuration: 10 * time.Second,
 	})
 
 	r := mux.NewRouter()

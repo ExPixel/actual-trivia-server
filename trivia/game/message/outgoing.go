@@ -25,6 +25,9 @@ const (
 	tagAddParticipant    = OutgoingMessageType("p-list-add")
 	tagRemoveParticipant = OutgoingMessageType("p-list-remove")
 	tagSetParticipant    = OutgoingMessageType("p-list-set")
+	tagParticipantsList  = OutgoingMessageType("p-list-full")
+
+	tagMulti = OutgoingMessageType("multi")
 )
 
 // GameNotFound is an outgoing message used to signal to the client that it has provided an invalid game id.
@@ -80,6 +83,11 @@ type RevealAnswer struct {
 	AnswerIndex   int `json:"answerIndex"`
 }
 
+// ParticipantsList is an outgoing message used to deliver a full list of participants to a client.
+type ParticipantsList struct {
+	Participants []Participant `json:"participants"`
+}
+
 // AddParticipant is an outgoing message that adds a participant to a client's list.
 type AddParticipant struct {
 	Participant Participant `json:"participant"`
@@ -97,8 +105,29 @@ type SetParticipant struct {
 
 // Participant is a single game participant that is a part of the participant list.
 type Participant struct {
-	Username string `json:"username"`
-	Score    int    `json:"score"`
+	Username     string `json:"username"`
+	Score        int    `json:"score"`
+	Disconnected bool   `json:"disconnected"`
+}
+
+// Multi is an outgoing messages used to send a bundle of multiple outgoing messages at once.
+type Multi struct {
+	Messages []interface{} `json:"messages"`
+}
+
+// Append appends an unwrapped message to this multi message. The message will be wrapped
+// by the append function.
+func (m *Multi) Append(msg interface{}) error {
+	if m.Messages == nil {
+		m.Messages = make([]interface{}, 0)
+	}
+
+	wrapped, err := WrapMessage(msg)
+	if err != nil {
+		return err
+	}
+	m.Messages = append(m.Messages, wrapped)
+	return nil
 }
 
 // #NOTE should only define outgoing messages in here
@@ -126,6 +155,10 @@ func getTagForOutgoingPayload(payload interface{}) (OutgoingMessageType, error) 
 		return tagRemoveParticipant, nil
 	case *SetParticipant:
 		return tagSetParticipant, nil
+	case *ParticipantsList:
+		return tagParticipantsList, nil
+	case *Multi:
+		return tagMulti, nil
 	}
 	return tagUnknown, errUnknownOutgoingTag
 }

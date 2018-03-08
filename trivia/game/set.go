@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/expixel/actual-trivia-server/trivia/game/message"
+
 	"github.com/expixel/actual-trivia-server/trivia"
 	"github.com/gorilla/websocket"
 )
@@ -37,6 +39,12 @@ type TriviaGameSetGame struct {
 	// ParticipationClosed is set to true if the game is no longer
 	// allowing participants.
 	ParticipationClosed bool
+
+	// ParticipantsCount is the number of participants already in this game.
+	ParticipantsCount int
+
+	// MaxParticipants is the maximum number of participants allowed in this game.
+	MaxParticipants int
 }
 
 // NewGameSet creates a new set of trivia games.
@@ -57,9 +65,17 @@ func (set *TriviaGamesSet) AddRawConnToGame(rawConn *websocket.Conn, gameID stri
 
 	var game *TriviaGame
 	if gameID == "" {
+		var lastSet *TriviaGameSetGame
 		for _, setGame := range set.games {
 			if !setGame.ParticipationClosed {
-				game = setGame.Game
+				// new particicipants get placed in the game with the highest number
+				// of participants this way.
+				if lastSet == nil || lastSet.ParticipantsCount > setGame.ParticipantsCount {
+					game = setGame.Game
+					lastSet = setGame
+				}
+			} else {
+				logger.Debug("skipping this game, participation is closed, fam.")
 			}
 		}
 	} else {
@@ -112,6 +128,7 @@ func (set *TriviaGamesSet) CreateGame(gameID string, gameOptions *TriviaGameOpti
 		gameTickTimerChan:   timerChan,
 		broadcastBuffer:     bytes.Buffer{},
 		currentQuestion:     -1,
+		participantsList:    message.ParticipantsList{Participants: make([]message.Participant, 0)},
 		gameTickTimer: time.AfterFunc(0, func() {
 			timerChan <- true
 			msgPendingCond.Signal()
@@ -125,6 +142,8 @@ func (set *TriviaGamesSet) CreateGame(gameID string, gameOptions *TriviaGameOpti
 	set.games[gameID] = &TriviaGameSetGame{
 		Game:                game,
 		ParticipationClosed: false,
+		ParticipantsCount:   0,
+		MaxParticipants:     gameOptions.MaxParticipants,
 	}
 	set.gamesLock.Unlock()
 
