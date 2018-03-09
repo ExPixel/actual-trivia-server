@@ -21,8 +21,12 @@ import (
 const questionAnimationTime = time.Second * 2
 
 // wordsPerSecond is used to calculate how much time we should wait after displaying
-// each question. It is based on the average reading speed which is about 200 words per minute (3 1/3 wps).
-const wordsPerSecond = 4
+// each question. average reading speed which is about 200 words per minute (3 1/3 wps).
+const wordsPerSecond = 2
+
+// maxQuestionReadTime is the maximum amount of time allotted to read a question before the
+// countdown starts.
+const maxQuestionReadTime = 6 * time.Second
 
 // answerAnimationTime is the delay between revealing an answer, and moving on to the next question.
 // This time should be used for animating the answer reveal and the participants' point totals.
@@ -51,6 +55,7 @@ const (
 	gameStateStartQuestionCountdown
 	gameStateQuestionCountdown
 	gameStateProcessAnswers
+	gameStateWaitingForClients
 	gameStateReporting
 )
 
@@ -371,8 +376,8 @@ func (g *TriviaGame) gameTick() {
 		}
 
 		extraTime := (time.Duration(wordsInPrompt) * time.Second / time.Duration(wordsPerSecond))
-		if extraTime > time.Second*5 {
-			extraTime = time.Second * 8
+		if extraTime > maxQuestionReadTime {
+			extraTime = maxQuestionReadTime
 		}
 		logger.Debug("ask question (%d -- %s): %s", wordsInPrompt, extraTime.String(), q.Prompt)
 		g.tickWait(questionAnimationTime + extraTime) // time allowance for question animation/extra reading time
@@ -494,29 +499,20 @@ func (g *TriviaGame) afterClientDisconnected(client *TriviaGameClient) {
 	client.SelectedAnswer = -1
 	if client.Participant {
 		g.participantsCount--
-		if !g.isGameInProgress() && g.participantsCount < g.options.MinParticipants {
-			logger.Debug("too few players before game started, resetting.") // remove debug code
-			g.removeParticipantFromList(client)
-			g.reset(false)
-		} else {
-			// If the game is in progress we just mark the participant as disconnected
-			// so that they can just reconnect later and continue wherever they left off.
-			if g.isGameInProgress() {
-				p := g.findParticipantInList(client)
-				if p != nil {
-					p.Disconnected = true
-					g.broadcastMessage(&message.SetParticipant{Participant: *p})
-				}
-			} else {
-				g.removeParticipantFromList(client)
+		// If the game is in progress we just mark the participant as disconnected
+		// so that they can just reconnect later and continue wherever they left off.
+		if g.isGameInProgress() {
+			p := g.findParticipantInList(client)
+			if p != nil {
+				p.Disconnected = true
+				g.broadcastMessage(&message.SetParticipant{Participant: *p})
 			}
-
-			if g.participantsCount < 1 {
-				// #TODO Here I should actually put the game into a gameStateTooFewClients
-				// state or something and wait an amount of time for clients to disconnect
-				// before actually just stopping the game.
-				logger.Debug("too few players, resetting game") // remove debug code
-				g.reset(true)
+		} else {
+			g.removeParticipantFromList(client)
+			if g.participantsCount < g.options.MinParticipants {
+				// #TODO I should send a message to all of the clients so that they stop the countdown.
+				logger.Debug("too few players, returning to waiting state")
+				g.reset(false)
 			}
 		}
 	} else {
