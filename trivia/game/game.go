@@ -636,6 +636,7 @@ func isSameUser(a *trivia.User, b *trivia.User) bool {
 
 func (g *TriviaGame) restoreReconnectedClient(client *TriviaGameClient) {
 	multi := message.Multi{}
+	multi.Append(&g.participantsList)
 
 	if g.currentState > gameStateCountdownToStart {
 		multi.Append(&message.GameStart{})
