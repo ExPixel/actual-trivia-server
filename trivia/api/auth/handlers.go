@@ -63,7 +63,8 @@ func (h *handler) signup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := signupResponse{
-		UserID: user.ID,
+		UserID:   user.ID,
+		Username: user.Username,
 	}
 	api.Response(w, &resp, http.StatusOK)
 }

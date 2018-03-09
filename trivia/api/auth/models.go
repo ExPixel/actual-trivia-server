@@ -8,5 +8,6 @@ type loginResponse struct {
 }
 
 type signupResponse struct {
-	UserID int64 `json:"userID"`
+	UserID   int64  `json:"userID"`
+	Username string `json:"username"`
 }
