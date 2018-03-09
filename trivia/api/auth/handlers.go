@@ -32,6 +32,10 @@ func (h *handler) signup(w http.ResponseWriter, r *http.Request) {
 		api.Error(w, "Username must be from 3 to 64 characters long.", http.StatusBadRequest)
 		return
 	}
+	if !validate.IsValidUsername(body.Username) {
+		api.Error(w, "Username can only contain the characters a-z, A-Z, 0-9, <, >, -, _, and .", http.StatusBadRequest)
+		return
+	}
 
 	if len(body.Password) < 6 || len(body.Password) > 256 {
 		api.Error(w, "Password must be from 3 to 256 characters long.", http.StatusBadRequest)

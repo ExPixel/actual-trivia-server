@@ -14,3 +14,21 @@ func TestEmailValidation(t *testing.T) {
 		t.Errorf("incorrect result from IsEmail: passed for bad email")
 	}
 }
+
+func TestUsernameValidation(t *testing.T) {
+	goodUsername := "expixel"
+	badUsername := "ex pixel"
+	badUsername2 := "#expixel!"
+
+	if !IsValidUsername(goodUsername) {
+		t.Errorf("incorrect result from IsValidUsername: '%s' should be valid", goodUsername)
+	}
+
+	if IsValidUsername(badUsername) {
+		t.Errorf("incorrect result from IsValidUsername: '%s' should be invalid", badUsername)
+	}
+
+	if IsValidUsername(badUsername2) {
+		t.Errorf("incorrect result from IsValidUsername: '%s' should be invalid", badUsername2)
+	}
+}
