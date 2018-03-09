@@ -29,17 +29,19 @@ func (i Int64) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON implements json.Unmarshaler for Int64
 func (i *Int64) UnmarshalJSON(data []byte) (err error) {
 	var v interface{}
-	if err = json.Unmarshal(data, v); err != nil {
+	if err = json.Unmarshal(data, &v); err != nil {
 		return
 	}
 	switch x := v.(type) {
 	case float64:
 		err = json.Unmarshal(data, &i.Int64)
+		i.Valid = (err == nil)
 	case string:
 		if len(x) == 0 {
 			i.Valid = false
 		} else {
 			i.Int64, err = strconv.ParseInt(x, 10, 64)
+			i.Valid = true
 		}
 	case nil:
 		i.Valid = false

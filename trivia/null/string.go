@@ -28,7 +28,7 @@ func (s String) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON implements json.Unmarshaler for String
 func (s *String) UnmarshalJSON(data []byte) (err error) {
 	var v interface{}
-	if err = json.Unmarshal(data, v); err != nil {
+	if err = json.Unmarshal(data, &v); err != nil {
 		return
 	}
 
