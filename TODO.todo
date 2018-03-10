@@ -1,9 +1,12 @@
-Uncategorized:
-    ☐ Sanitize usernames so that special characters and zero-widths spaces cannot be used. I should also
+Uncategorized Bugs:
+Uncategorized Features:
+    ✔ Sanitize usernames so that special characters and zero-widths spaces cannot be used. I should also @done (2018-3-10 00:11:27)
       stop people from having a hash (#) in their name as that character is used to denote guest usernames.
     ☐ Add CORS headers and only "accept" requests from the same origin.
 
-Server:
+Server Bugs:
+
+Server Features:
   ✔ Change the Login API so that it accepts either a username or an email address. @done (2018-2-22 09:56:58)
   ✔ Handle disconnects from the game by not actually removing a client from the game's client list when a websocket @done (2018-3-9 14:52:50)
     gets closed. Instead we just nil the Conn and wait for a player with the same auth token to come from the pendingConnections
@@ -23,3 +26,7 @@ UI Bugs:
     by wrapping components in a pathless route instead of what I'm currently doing which is overriding 
     shouldComponentUpdate. I like my solution more for now because it basically does the same thing
     without adding yet another component to delgate crap to its children while polluting my devtools.
+
+UI Features:
+  ☐ Show login errors on the login screen instead of the alert.
+  ☐ Show registration errors on the register screen instead of the alert.
