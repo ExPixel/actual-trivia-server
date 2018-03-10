@@ -508,6 +508,10 @@ func (g *TriviaGame) afterClientDisconnected(client *TriviaGameClient) {
 				g.broadcastMessage(&message.SetParticipant{Participant: *p})
 			}
 		} else {
+			p := g.findParticipantInList(client)
+			if p != nil {
+				g.broadcastMessage(&message.RemoveParticipant{Participant: *p})
+			}
 			g.removeParticipantFromList(client)
 			if g.participantsCount < g.options.MinParticipants {
 				// #TODO I should send a message to all of the clients so that they stop the countdown.
