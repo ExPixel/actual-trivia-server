@@ -16,7 +16,7 @@ Server Features:
   ✔ I'm probably sending too many countdown updates to the clients (once every second) @done (2018-3-9 14:52:45)
     The client code can handle some gaps in the countdown so I should probably be sending an update
     down ever 5 or 3 seconds or something. Would probably be good savings on bandwidth in production.
-  ☐ Restore a client's current question answer choice on after they've reconnected to the server. I'll probably have to make
+  ☐ Restore a client's current question answer choice on after they've reconnected to the server.
      I'll probably have to make a special Reconnected message for clients that will contain that kind of information and
      then send it at the head of the Multi message that is sent to clients when they reconnect.
 
