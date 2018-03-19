@@ -30,3 +30,4 @@ UI Bugs:
 UI Features:
   ☐ Show login errors on the login screen instead of the alert.
   ☐ Show registration errors on the register screen instead of the alert.
+  ☐ Upgrade to mobx 4
