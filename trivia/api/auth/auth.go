@@ -98,6 +98,17 @@ func (s *service) CreateUser(username string, email string, password string) (*t
 	return user, creds, nil
 }
 
+func (s *service) LogoutUserWithToken(token string) error {
+	deleted, err := s.tokens.DeleteToken(token, true)
+	if err != nil {
+		return err
+	}
+	if deleted {
+		return nil
+	}
+	return trivia.ErrTokenNotFound
+}
+
 // storeTokenStrings stores the generated auth and refresh tokens into the database and
 // returns the stored token pair.
 func (s *service) storeTokenStrings(userID null.Int64, guestID null.Int64, authTokenString string, refreshTokenString string) (*trivia.TokenPair, error) {

@@ -56,7 +56,7 @@ func (h *handler) signup(w http.ResponseWriter, r *http.Request) {
 		case trivia.ErrUsernameInUse:
 			api.Error(w, "Username is already in use.", http.StatusConflict)
 		default:
-			logger.Error("error ocurred while creating user: ", err)
+			logger.Error("error ocurred while creating user: %s", err)
 			api.Error(w, "Unknown error occurred while creating user.", http.StatusInternalServerError)
 		}
 		return
@@ -92,7 +92,7 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 		case trivia.ErrIncorrectPassword:
 			api.Error(w, "No user with the given email/username and password.", http.StatusNotFound)
 		default:
-			logger.Error("error ocurred while logging in with email and password: ", err)
+			logger.Error("error ocurred while logging in with email and password: %s", err)
 			api.Error(w, "Unknown error occurred while logging in.", http.StatusInternalServerError)
 		}
 		return
@@ -112,7 +112,7 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 func (h *handler) guest(w http.ResponseWriter, r *http.Request) {
 	pair, err := h.authService.LoginAsGuest()
 	if err != nil {
-		logger.Error("error ocurred while generating guest tokens: ", err)
+		logger.Error("error ocurred while generating guest tokens: %s", err)
 		api.Error(w, "Unknown error occurred while logging in.", http.StatusInternalServerError)
 	}
 	resp := loginResponse{
@@ -124,12 +124,37 @@ func (h *handler) guest(w http.ResponseWriter, r *http.Request) {
 	api.Response(w, &resp, http.StatusOK)
 }
 
+func (h *handler) logout(w http.ResponseWriter, r *http.Request) {
+	type logoutBody struct {
+		Token string `json:"token"`
+	}
+
+	body := logoutBody{}
+	if err := api.RequireJSONBody(w, r, &body); err != nil {
+		return
+	}
+
+	err := h.authService.LogoutUserWithToken(body.Token)
+	if err != nil {
+		if err == trivia.ErrTokenNotFound {
+			api.Error(w, "invalid auth token provided", http.StatusNotFound)
+		} else {
+			logger.Error("error ocurred while deleting tokens: %s", err)
+			api.Error(w, "unknown error occurred while logging out", http.StatusInternalServerError)
+		}
+	} else {
+		resp := true
+		api.Response(w, &resp, http.StatusOK)
+	}
+}
+
 // NewHandler creates a new handler for requests to the authentication api.
 func NewHandler(as trivia.AuthService) http.Handler {
 	h := handler{authService: as}
 	r := mux.NewRouter()
 	r.HandleFunc("/v1/auth/signup", h.signup).Methods("POST")
 	r.HandleFunc("/v1/auth/login", h.login).Methods("POST")
+	r.HandleFunc("/v1/auth/logout", h.logout).Methods("POST")
 	r.HandleFunc("/v1/auth/guest", h.guest).Methods("POST")
 	return api.WrapAPIHandler(r)
 }

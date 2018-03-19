@@ -112,6 +112,10 @@ type AuthTokenService interface {
 	// GetAuthTokenAndUser gets an auth token as well as the associated user using the
 	// token string. This will return a null user if this is a token for a guest.
 	GetAuthTokenAndUser(token string) (*AuthToken, *User, error)
+
+	// DeleteToken deletes an auth token (and optionally its refresh token) from the database.
+	// This returns true if a token was deleted, or false otherwise.
+	DeleteToken(token string, deleteRefresh bool) (bool, error)
 }
 
 // An AuthService contains methods for authenticating users.
@@ -127,6 +131,9 @@ type AuthService interface {
 
 	// LoginAsGuest creates a pair of tokens for a guest account.
 	LoginAsGuest() (*TokenPair, error)
+
+	// LogoutUserWithToken logs a user out using an auth token (invalidates the token)
+	LogoutUserWithToken(token string) error
 }
 
 // A QuestionService contains methods for fetching and interacting with questions.

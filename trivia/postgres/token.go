@@ -102,6 +102,36 @@ func (s *tokenService) GetAuthTokenAndUser(token string) (*trivia.AuthToken, *tr
 	return authToken, user, nil
 }
 
+func (s *tokenService) DeleteToken(token string, deleteRefresh bool) (bool, error) {
+	deletedAToken := false
+	err := transact(s.db, func(tx *sql.Tx) error {
+		result, err := tx.Exec(`DELETE FROM auth_tokens WHERE token = $1;`, token)
+		if err != nil {
+			return err
+		}
+
+		aff, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		deletedAToken = aff > 0
+
+		if deleteRefresh {
+			_, err = tx.Exec(`DELETE FROM refresh_tokens WHERE auth_token = $1;`, token)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		deletedAToken = false
+	}
+	return deletedAToken, err
+}
+
 // NewTokenService creats a use AuthTokenService
 func NewTokenService(db *sql.DB) trivia.AuthTokenService {
 	return &tokenService{db: db}
