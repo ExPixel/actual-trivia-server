@@ -54,7 +54,11 @@ type GameStartCountdownTick struct {
 
 // GameStart is an outgoing message to let the client know that the game has started and that
 // questions are going to start being delivered.
-type GameStart struct{}
+type GameStart struct {
+	// QuestionCount is the number of prompts that will be presented during
+	// the game.
+	QuestionCount int `json:"questionCount"`
+}
 
 // SetPrompt is an outgoing message that sets the current prompt and choices for the clients.
 type SetPrompt struct {

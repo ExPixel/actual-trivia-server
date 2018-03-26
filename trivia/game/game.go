@@ -334,7 +334,7 @@ func (g *TriviaGame) gameTick() {
 			// #TODO set the game question here first.
 			g.currentState = gameStateQuestion
 			g.updateSetParticipation()
-			g.broadcastMessage(&message.GameStart{})
+			g.broadcastMessage(&message.GameStart{QuestionCount: g.options.QuestionCount})
 			g.tickWait(500 * time.Millisecond)
 		} else {
 			var waitDur time.Duration
@@ -643,7 +643,7 @@ func (g *TriviaGame) restoreReconnectedClient(client *TriviaGameClient) {
 	multi.Append(&g.participantsList)
 
 	if g.currentState > gameStateCountdownToStart {
-		multi.Append(&message.GameStart{})
+		multi.Append(&message.GameStart{QuestionCount: g.options.QuestionCount})
 	}
 
 	if g.currentState == gameStateCountdownToStart {
