@@ -19,6 +19,7 @@ Server Features:
   ☐ Restore a client's current question answer choice on after they've reconnected to the server.
      I'll probably have to make a special Reconnected message for clients that will contain that kind of information and
      then send it at the head of the Multi message that is sent to clients when they reconnect.
+  ✔ Send the question count to the client on game start. @done (2018-3-26 12:38:05)
 
 UI Bugs:
   ✔ Fix the main menu UI so that the menu items list can be scrolled if there is not enough space @done (2018-2-22 09:57:03)
@@ -31,3 +32,4 @@ UI Features:
   ☐ Show login errors on the login screen instead of the alert.
   ☐ Show registration errors on the register screen instead of the alert.
   ☐ Upgrade to mobx 4
+  ✔ Change the question count when it's sent from the server. Right now it defaults to 10. @done (2018-3-26 12:38:07)
