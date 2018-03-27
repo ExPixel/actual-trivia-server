@@ -32,6 +32,15 @@ const maxQuestionReadTime = 6 * time.Second
 // This time should be used for animating the answer reveal and the participants' point totals.
 const answerAnimationTime = time.Second*2 + time.Millisecond*500
 
+// noClientsWaitTime is the amount of time that a game will wait for reconnections
+// after all clients have disconnected before an in progress game has completed.
+// This time is kept intentionally short because clients shouldn't be disconnecting
+// that often and when they do reconnection should either be pretty quick or long
+// enough that we shouldn't bother continuing to wait. Putting the game in this wait
+// state can also cause some problems with timers in some of the inbetween states
+// so it's not something we want to be doing often anyway.
+const noClientsWaitTime = time.Second * 30
+
 // pingDelay is the delay used to pad transtitions between certain game
 // states to account for the amount of time it takes messages to get to
 // some users.
@@ -98,6 +107,10 @@ type TriviaGame struct {
 
 	// currentState represents the current state of the game. A state of gameStateWaitingToStart
 	currentState State
+
+	// savedGameState is used to save the last state of the game before it goes into some idle
+	// state like gameStateWaitingForClients
+	savedGameState State
 
 	// gameTickWaiting is true if the game loop should only run the next game tick
 	// after the timer fires in the current iteration of the game loop.
@@ -210,8 +223,6 @@ func (g *TriviaGame) startLoop() {
 connectionLoop:
 	for {
 		// logger.Debug("connection loop tick (%d pending)", len(g.pendingClients))
-
-		executeNextTick := !g.gameTickWaiting
 	selectIOLoop:
 		for {
 			select {
@@ -228,7 +239,6 @@ connectionLoop:
 				}
 			case v := <-g.gameTickTimerChan:
 				if v && g.gameTickWaiting {
-					executeNextTick = true
 					g.gameTickWaiting = false
 				}
 			default:
@@ -237,7 +247,7 @@ connectionLoop:
 		}
 
 		g.handlePendingClients()
-		if executeNextTick {
+		if !g.gameTickWaiting {
 			g.gameTick()
 		}
 		g.readClientMessages()
@@ -420,6 +430,9 @@ func (g *TriviaGame) gameTick() {
 		}
 		g.currentState = gameStateQuestion
 		g.tickWait(answerAnimationTime) // I forget why I have a wait here, probably not important :|
+	case gameStateWaitingForClients:
+		// #TODO if we reach this point, the game should end
+		logger.Error("Reached gameStateWaitingForClients in game tick. The game should end.")
 	default:
 		logger.Error("reached unexpected game state %d", g.currentState)
 	}
@@ -506,6 +519,15 @@ func (g *TriviaGame) afterClientDisconnected(client *TriviaGameClient) {
 			if p != nil {
 				p.Disconnected = true
 				g.broadcastMessage(&message.SetParticipant{Participant: *p})
+			}
+
+			// Because the game has no participants we put it into a waiting state
+			if g.participantsCount < 1 {
+				g.savedGameState = g.currentState
+				g.currentState = gameStateWaitingForClients
+				g.tickWait(noClientsWaitTime)
+
+				logger.Debug("too few participants placed game into gameStateWaitingForClients")
 			}
 		} else {
 			p := g.findParticipantInList(client)
@@ -682,28 +704,50 @@ func (g *TriviaGame) restoreReconnectedClient(client *TriviaGameClient) {
 // if there is one with the same user. It returns true if it was successful or false
 // if no client with the same user was found.
 func (g *TriviaGame) tryReconnectConn(conn *Conn, user *trivia.User) bool {
-	if client, ok := g.clients[user.ID]; ok {
+	reconnected := false
+
+	var client *TriviaGameClient
+	var ok bool
+
+	if client, ok = g.clients[user.ID]; ok {
 		// we just jump over to the new connection
 		client.Conn.Close()
 		client.Conn = conn
-		g.restoreReconnectedClient(client)
 
 		logger.Debug("reconnected user (connected): %s", client.User.Username)
-		return true
-	}
-
-	if client, ok := g.disconnectedClients[user.ID]; ok {
+		reconnected = true
+	} else if client, ok = g.disconnectedClients[user.ID]; ok {
 		client.Conn = conn
 		delete(g.disconnectedClients, user.ID)
 		g.clients[user.ID] = client
 		client.Closed = false
-		g.restoreReconnectedClient(client)
 
 		logger.Debug("reconnected user (disconnected): %s", client.User.Username)
-		return true
+		reconnected = true
 	}
 
-	return false
+	if reconnected {
+		if client.Participant {
+			g.participantsCount++
+		} else {
+			g.spectatorsCount++
+		}
+
+		if g.participantsCount > 0 && g.currentState == gameStateWaitingForClients {
+			g.currentState = g.savedGameState
+			g.tickImm() // immediately starts from whatever state the game left off at.
+			logger.Debug("client reconnected, game no longer in waiting for clients state.")
+		}
+
+		// this relies on the current state so it has to be here
+		// #TODO not sure what I'm supposed to do if a spectator reconnects
+		// while the game is in an idle state thought. I might just have to refuse their connection
+		// or something. And the game kind of just stops for spectators if there are no participants
+		// so that's also kind of weird. Will need to solve this issues at a later date.
+		g.restoreReconnectedClient(client)
+	}
+
+	return reconnected
 }
 
 // handlePendingClients handle ClientAuth messages from pending clients and remove them from the waiting list
