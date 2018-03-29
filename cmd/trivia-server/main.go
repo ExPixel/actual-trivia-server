@@ -71,7 +71,7 @@ func main() {
 	config := loadConfig()
 
 	connStr := createSQLConnectionString(config)
-	eplog.Debug("postgres connection string =  `%s`", connStr)
+	eplog.Debug("app", "postgres connection string =  `%s`", connStr)
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		eplog.Error("app", "error occurred while opening db connection: %s", err)
