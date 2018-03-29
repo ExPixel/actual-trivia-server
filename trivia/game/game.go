@@ -432,6 +432,7 @@ func (g *TriviaGame) gameTick() {
 		g.tickWait(answerAnimationTime) // I forget why I have a wait here, probably not important :|
 	case gameStateWaitingForClients:
 		// #TODO if we reach this point, the game should end
+		g.reset(true) // for now I just reset though.
 		logger.Error("Reached gameStateWaitingForClients in game tick. The game should end.")
 	default:
 		logger.Error("reached unexpected game state %d", g.currentState)
