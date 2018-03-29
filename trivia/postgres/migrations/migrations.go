@@ -41,7 +41,7 @@ func RunMigrations(db *sql.DB) (success bool) {
 		name TEXT
 	);`)
 	if err != nil {
-		logger.Error("error creating migrations table: ", err)
+		logger.Error("error creating migrations table: %s", err)
 		return
 	}
 
