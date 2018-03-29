@@ -1,12 +1,9 @@
-Uncategorized Bugs:
-Uncategorized Features:
-    ✔ Sanitize usernames so that special characters and zero-widths spaces cannot be used. I should also @done (2018-3-10 00:11:27)
-    stop people from having a hash (#) in their name as that character is used to denote guest usernames.
-    ☐ Add CORS headers and only "accept" requests from the same origin.
-
 Server Bugs:
 
-Server Features:
+Server Tasks:
+    ✔ Sanitize usernames so that special characters and zero-widths spaces cannot be used. I should also @done (2018-3-10 00:11:27)
+    ☐ Add CORS headers and only "accept" requests from the same origin.
+    stop people from having a hash (#) in their name as that character is used to denote guest usernames.
     ✔ Change the Login API so that it accepts either a username or an email address. @done (2018-2-22 09:56:58)
     ✔ Handle disconnects from the game by not actually removing a client from the game's client list when a websocket @done (2018-3-9 14:52:50)
     gets closed. Instead we just nil the Conn and wait for a player with the same auth token to come from the pendingConnections
@@ -22,23 +19,3 @@ Server Features:
     ✔ Send the question count to the client on game start. @done (2018-3-26 12:38:05)
     ☐ Create endpoints for creating games @high 
     ☐ Create websocket messages for changing game options. @low
-
-UI Bugs:
-    ✔ Fix the main menu UI so that the menu items list can be scrolled if there is not enough space @done (2018-2-22 09:57:03)
-    ☐ Consider fixing the issue of routes not being rerendered because location is passed through the context
-    by wrapping components in a pathless route instead of what I'm currently doing which is overriding 
-    shouldComponentUpdate. I like my solution more for now because it basically does the same thing
-    without adding yet another component to delgate crap to its children while polluting my devtools.
-
-UI Features:
-    ☐ Show login errors on the login screen instead of the alert.
-    ☐ Show registration errors on the register screen instead of the alert.
-    ☐ Upgrade to mobx 4
-    ✔ Change the question count when it's sent from the server. Right now it defaults to 10. @done (2018-3-26 12:38:07)
-    ☐ Add initial game options @low  
-        ☐ Add game option for number of questions displayed during the game.
-        ☐ Add game option for the number of time given for each prompt.
-        ☐ Maybe add a game option to configure just how much reading time there
-        is for each question?
-    ☐ Add an animation for the trivia prompt choices. @low 
-    ☐ Create UI for creating game lobbies. @high 
