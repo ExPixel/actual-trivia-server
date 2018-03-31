@@ -219,6 +219,7 @@ func (g *TriviaGame) AddConn(conn *Conn) {
 func (g *TriviaGame) startLoop() {
 	logger.Debug("game(%s) started connection loop", g.ID) // #TODO remove debug code
 	stopGameChanClosed := false
+	clientInfoRequestMessage := message.MustEncodeBytes(&message.ClientInfoRequest{GameID: g.ID})
 
 connectionLoop:
 	for {
@@ -229,9 +230,7 @@ connectionLoop:
 			case conn := <-g.clientConnectedChan:
 				g.pendingClients = append(g.pendingClients, conn)
 				logger.Debug("client %s added to pending clients", conn.wsConn.RemoteAddr()) // #TODO remove debug code
-
-				// #TODO I can move this generic client info request inside of the game struct.
-				conn.WriteBytes(message.MustEncodeBytes(&message.ClientInfoRequest{GameID: g.ID}))
+				conn.WriteBytes(clientInfoRequestMessage)
 			case val, ok := <-g.stopGameChan:
 				stopGameChanClosed = !ok
 				if val || !ok {
@@ -290,7 +289,7 @@ func (g *TriviaGame) addGameClient(conn *Conn, user *trivia.User) {
 		g.spectatorsCount++
 		g.clients[user.ID] = client
 		g.sendMessage(client, &g.participantsList)
-		g.restoreReconnectedClient(client) // #TODO I should probably rename restoreReconnected to something else but I'm bad at names.
+		g.restoreReconnectedClient(client)
 	}
 }
 
@@ -341,7 +340,6 @@ func (g *TriviaGame) gameTick() {
 	case gameStateCountdownToStart:
 		now := time.Now()
 		if now.After(g.gameCountdownEnd) {
-			// #TODO set the game question here first.
 			g.currentState = gameStateQuestion
 			g.updateSetParticipation()
 			g.broadcastMessage(&message.GameStart{QuestionCount: g.options.QuestionCount})
